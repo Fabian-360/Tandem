@@ -65,7 +65,7 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .tile{background:#fff;border:1px solid var(--line);border-radius:16px;padding:0;overflow:hidden;display:flex;flex-direction:column;align-items:stretch;font-size:12px;font-weight:700;letter-spacing:-.2px;line-height:30px;white-space:nowrap;text-align:center}
 .tile img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover}
 .frame{position:relative;display:block;width:100%;aspect-ratio:1660/1420;border:none;padding:0;background:#B8923F;border-radius:16px;overflow:hidden;box-shadow:0 3px 8px rgba(42,36,34,.25)}
-.frame .inner{position:absolute;left:9%;top:12%;width:82%;height:75.5%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:#EFDCD6;overflow:hidden}
+.frame .inner{position:absolute;left:8%;top:11%;width:84%;height:77.5%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:#EFDCD6;overflow:hidden}
 .frame .inner img{width:100%;height:100%;object-fit:cover}
 .frame .inner img.sl{position:absolute;left:0;top:0;opacity:0;transition:opacity 1.2s ease}
 .frame .inner img.sl.on{opacity:1}
@@ -137,7 +137,7 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .spcol{min-width:0}
 .spcol+.spcol{border-left:2px solid rgba(43,58,85,.55)}
 .sphead{height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border-bottom:2px solid #2B3A55}
-.spgoodie{height:76px;display:flex;align-items:center;justify-content:center}
+.spgoodie{min-height:76px;display:flex;align-items:center;justify-content:center}
 .gbtn{display:block;width:calc(100% - 10px);margin:0 5px;min-height:48px;max-height:70px;overflow:hidden;padding:6px 4px;text-align:center;border-radius:12px}
 .spstreak{height:34px;display:flex;align-items:center;justify-content:center;gap:4px;border-bottom:1px dashed rgba(43,58,85,.25);font-size:12px;font-weight:700}
 .spentry{position:relative;height:40px;display:flex;flex-direction:column;justify-content:center;align-items:center;line-height:1.05}
