@@ -1,6 +1,6 @@
 // Tandem Service Worker – speichert die App für die Offline-Nutzung.
 // Nach Änderungen an der App die Versionsnummer erhöhen.
-const VERSION = 'tandem-v6';
+const VERSION = 'tandem-v7';
 const FILES = [
   './',
   'advent.jpg',
@@ -52,7 +52,7 @@ const FILES = [
   'store.js',
   'manifest.webmanifest',
 ];
-self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
+self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION && k !== 'tandem-fonts').map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
@@ -64,6 +64,8 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (u.origin === location.origin) {
-    e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request).catch(() => caches.match('./index.html'))));
+    // Erst im Netz nach der neuesten Version schauen, offline aus dem Speicher
+    e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(r => { if (r.ok) { const cp = r.clone(); caches.open(VERSION).then(c => c.put(e.request, cp)); } return r; })
+      .catch(() => caches.match(e.request, { ignoreSearch: true }).then(hit => hit || caches.match('./index.html'))));
   }
 });
