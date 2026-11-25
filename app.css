@@ -176,3 +176,8 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--ink)}
 @keyframes candle{0%,100%{filter:brightness(1)}50%{filter:brightness(1.12) saturate(1.1)}}
 @keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.wdchip{position:relative;display:inline-flex}
+.wdchip input{position:absolute;opacity:0;width:1px;height:1px}
+.wdchip span{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:20px;border:1px solid #DCCFBF;background:#FBF7F1;font-size:14px;font-weight:700;color:var(--ink)}
+.wdchip input:checked+span{background:var(--acc,#C4243B);border-color:var(--acc,#C4243B);color:var(--acc-on,#fff)}

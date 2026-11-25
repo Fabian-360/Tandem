@@ -395,11 +395,26 @@ function occurs(e, d) {
   if (r === 'm') return d.getDate() === b.getDate();
   if (r === 'nth') { if (d.getDay() !== b.getDay()) return false; const n = nthOf(b); return n === 5 ? L.addDays(d, 7).getMonth() !== d.getMonth() : nthOf(d) === n; }
   if (r === 'y') return d.getDate() === b.getDate() && d.getMonth() === b.getMonth();
+  if (r === 'c') {
+    const n = Math.max(1, Number(e.every) || 1), u = e.unit || 'w';
+    if (u === 'd') return L.dayDiff(b, d) % n === 0;
+    if (u === 'w') { const wd = (e.wdays && e.wdays.length) ? e.wdays : [b.getDay()]; if (!wd.includes(d.getDay())) return false; const mon = (x) => L.addDays(x, -((x.getDay() + 6) % 7)); return (L.dayDiff(mon(b), mon(d)) / 7) % n === 0; }
+    if (u === 'm') { const md = (d.getFullYear() * 12 + d.getMonth()) - (b.getFullYear() * 12 + b.getMonth()); if (md % n) return false; if (e.mmode !== 'nth') return d.getDate() === b.getDate(); if (d.getDay() !== b.getDay()) return false; const k5 = nthOf(b); return k5 === 5 ? L.addDays(d, 7).getMonth() !== d.getMonth() : nthOf(d) === k5; }
+    if (u === 'y') return (d.getFullYear() - b.getFullYear()) % n === 0 && d.getDate() === b.getDate() && d.getMonth() === b.getMonth();
+  }
   return false;
 }
+const WDO = [1, 2, 3, 4, 5, 6, 0];
 function repLabel(e) {
   if (e.bday) return '';
   const b = L.parseISO(e.date);
+  if (e.rep === 'c' && b) {
+    const n = Math.max(1, Number(e.every) || 1), u = e.unit || 'w';
+    const name = { d: ['jeden Tag', 'alle ' + n + ' Tage'], w: ['jede Woche', 'alle ' + n + ' Wochen'], m: ['jeden Monat', 'alle ' + n + ' Monate'], y: ['jedes Jahr', 'alle ' + n + ' Jahre'] }[u][n === 1 ? 0 : 1];
+    if (u === 'w') { const wd = (e.wdays && e.wdays.length) ? e.wdays : [b.getDay()]; return name + ' · ' + WDO.filter(x => wd.includes(x)).map(x => L.WD[x]).join(', '); }
+    if (u === 'm') return name + (e.mmode === 'nth' ? ' · ' + nthTxt(b).replace('Jeden ', 'am ').replace(' im Monat', '') : ' · am ' + b.getDate() + '.');
+    return name;
+  }
   return { w1: 'jede Woche', w2: 'alle 2 Wochen', m: 'monatlich', nth: b ? nthTxt(b).replace('Jeden', 'jeden').replace(' im Monat', '') : '', y: 'jährlich' }[e.rep] || '';
 }
 function evInst(e, k) {
@@ -449,9 +464,13 @@ function viewCal() {
     const list = [];
     Object.keys(hol).filter(k => k.slice(0, 7) === mk && k >= from).forEach(k => list.push({ k, title: hol[k].name, when: L.fmtShort(L.parseISO(k)) + ' · ' + hol[k].kind, hol: true }));
     const endK = L.iso(new Date(y, mo + 1, 0));
-    instRange(evs, from, L.dayDiff(L.parseISO(from), L.parseISO(endK)) + 1).forEach(e => list.push(Object.assign({ k: e.date + (e.bday ? '' : (e.time || '~')) }, e, { when: (e.date === t ? 'Heute' : L.fmtShort(L.parseISO(e.date))) + (e.sub && e.sub !== 'ganztägig' ? ' · ' + e.sub : '') })));
+    instRange(evs, from, L.dayDiff(L.parseISO(from), L.parseISO(endK)) + 1).filter(e => !e.bday).forEach(e => list.push(Object.assign({ k: e.date + (e.bday ? '' : (e.time || '~')) }, e, { when: (e.date === t ? 'Heute' : L.fmtShort(L.parseISO(e.date))) + (e.sub && e.sub !== 'ganztägig' ? ' · ' + e.sub : '') })));
     list.sort((a, b) => a.k < b.k ? -1 : 1);
     body += '<div class="card" style="padding:4px 16px">' + (list.length ? list.map(evRow).join('') : '<div class="empty" style="padding:12px 0">Noch keine Termine in diesem Monat</div>') + '</div>';
+    const bds = instRange(evs.filter(e => e.bday), L.iso(first), new Date(y, mo + 1, 0).getDate());
+    body += '<div class="card" style="padding:14px 16px;background:' + BDAY_BG + '"><div style="font-size:16px;font-weight:800;margin-bottom:6px">🎂 Geburtstage im ' + L.MON[mo] + '</div>' +
+      (bds.length ? bds.map(e => '<button class="row" data-a="editEvent" data-id="' + e.id + '" style="width:100%;background:none;border:none;padding:8px 0;text-align:left;gap:12px' + (e.date < t ? ';opacity:.55' : '') + '"><span style="min-width:44px;font-weight:800;font-size:15px">' + L.parseISO(e.date).getDate() + '. ' + L.MS[mo] + '</span><span style="flex:1"><span class="t15" style="display:block">' + esc(e.title.replace('🎂 ', '')) + '</span><span class="small muted">' + (e.date === t ? 'Heute! · ' : '') + esc(e.sub.replace('Geburtstag · ', '').replace('Geburtstag', '')) + '</span></span></button>').join('')
+        : '<div class="small muted">Keine Geburtstage in diesem Monat.</div>') + '</div>';
   }
   const fl = [['all', 'Alle'], ['me', 'Meine'], ['other', them() + 's']];
   return '<div class="stack"><div class="row" style="justify-content:space-between"><button class="circle-btn" data-a="calNav" data-v="-1" aria-label="Zurück">‹</button><div class="fell" style="font-size:24px;text-align:center">' + title + '</div><button class="circle-btn" data-a="calNav" data-v="1" aria-label="Weiter">›</button></div>' +
@@ -719,16 +738,29 @@ function eventSheet(x, date) {
     fText('title', '<span class="ev-l">' + (bd ? 'Wessen Geburtstag?' : 'Was?') + '</span>', x && x.title, bd ? 'Oma Ingrid' : 'Zahnarzt', 'required') +
     fDate('date', '<span class="ev-d">' + (bd ? 'Geburtsdatum (mit Jahr, dann steht das Alter dabei)' : 'Datum') + '</span>', x ? x.date : date, 'required') +
     '<div class="ev-only stack" style="gap:14px' + (bd ? ';display:none' : '') + '"><label class="field">Uhrzeit (optional)<input type="time" name="time" value="' + esc(x ? x.time || '' : '') + '"></label>' +
-    fSel('rep', 'Wiederholen', r, [['', 'Nicht wiederholen'], ['w1', 'Jede Woche'], ['w2', 'Alle 2 Wochen'], ['m', 'Jeden Monat am ' + d0.getDate() + '.'], ['nth', nthTxt(d0)], ['y', 'Jedes Jahr']]) +
+    fSel('rep', 'Wiederholen', r, [['', 'Nicht wiederholen'], ['w1', 'Jede Woche'], ['w2', 'Alle 2 Wochen'], ['m', 'Jeden Monat am ' + d0.getDate() + '.'], ['nth', nthTxt(d0)], ['y', 'Jedes Jahr'], ['c', 'Individuell …']]) +
+    customRepHTML(x, d0) +
     '<div class="ev-until"' + (r ? '' : ' style="display:none"') + '>' + fDate('until', 'Wiederholen bis (optional)', x && x.until) + '</div></div>' +
     fSel('who', 'Für wen?', x ? x.who : S.who, bd ? whoBd : whoOpts()),
     (f) => {
       if (!f.title.trim()) return false;
       const isB = f.evkind === 'bday';
       const d = { title: f.title.trim(), date: f.date, who: isB && f.who !== 'b' ? S.who : f.who, bday: isB, time: isB ? '' : (f.time || ''), rep: isB ? 'y' : (f.rep || ''), until: isB || !f.rep ? '' : (f.until || '') };
+      if (d.rep === 'c') { d.every = Math.max(1, Math.min(99, parseInt(f.every, 10) || 1)); d.unit = f.unit || 'w'; d.mmode = f.mmode || 'date'; d.wdays = Array.from(document.querySelectorAll('#sheetForm [name=wd]:checked')).map(c => Number(c.value)); if (d.unit === 'w' && !d.wdays.length) d.wdays = [L.parseISO(f.date).getDay()]; }
       return x ? store.update('events', x.id, d) : store.add('events', Object.assign(d, { by: S.who }));
     },
     x ? () => store.remove('events', x.id) : null);
+}
+function customRepHTML(x, d0) {
+  const on = x && x.rep === 'c', u = (on && x.unit) || 'w', wd = (on && x.wdays && x.wdays.length) ? x.wdays : [d0.getDay()];
+  return '<div class="ev-custom stack" style="gap:12px;padding:12px;border:1px solid #DCCFBF;border-radius:12px;background:#fff' + (on ? '' : ';display:none') + '">' +
+    '<div class="row" style="gap:10px;align-items:flex-end"><span style="font-size:15px;font-weight:700;padding-bottom:12px">Alle</span>' +
+    '<label class="field" style="width:76px">&nbsp;<input type="number" name="every" min="1" max="99" inputmode="numeric" value="' + ((on && x.every) || 1) + '"></label>' +
+    '<label class="field" style="flex:1">&nbsp;<select name="unit">' + [['d', 'Tage'], ['w', 'Wochen'], ['m', 'Monate'], ['y', 'Jahre']].map(o => '<option value="' + o[0] + '"' + (o[0] === u ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></label></div>' +
+    '<div class="cr-w" style="' + (u === 'w' ? '' : 'display:none') + '"><div class="small muted" style="font-weight:700;margin-bottom:6px">An diesen Tagen</div><div class="row" style="gap:6px;flex-wrap:wrap">' +
+    WDO.map(i => '<label class="wdchip"><input type="checkbox" name="wd" value="' + i + '"' + (wd.includes(i) ? ' checked' : '') + '><span>' + L.WD[i] + '</span></label>').join('') + '</div></div>' +
+    '<div class="cr-m" style="' + (u === 'm' ? '' : 'display:none') + '">' + fSel('mmode', 'Wann im Monat?', (on && x.mmode) || 'date', [['date', 'Am ' + d0.getDate() + '. des Monats'], ['nth', nthTxt(d0).replace('Jeden ', 'Am ').replace(' im Monat', '')]]) + '</div>' +
+    '</div>';
 }
 function eventSheetSync(form, el) {
   const isB = form.evkind.value === 'bday';
@@ -742,7 +774,9 @@ function eventSheetSync(form, el) {
   }
   const rp = form.elements.rep;
   if (el.name === 'date' && rp) { const d = L.parseISO(form.elements.date.value); if (d) { rp.querySelector('[value=m]').textContent = 'Jeden Monat am ' + d.getDate() + '.'; rp.querySelector('[value=nth]').textContent = nthTxt(d); } }
-  if (el.name === 'rep') form.querySelector('.ev-until').style.display = rp.value ? '' : 'none';
+  if (el.name === 'rep') { form.querySelector('.ev-until').style.display = rp.value ? '' : 'none'; form.querySelector('.ev-custom').style.display = rp.value === 'c' ? '' : 'none'; }
+  if (el.name === 'unit') { const u = form.elements.unit.value; form.querySelector('.cr-w').style.display = u === 'w' ? '' : 'none'; form.querySelector('.cr-m').style.display = u === 'm' ? '' : 'none'; }
+  if (el.name === 'date' && form.elements.mmode) { const d = L.parseISO(form.elements.date.value); if (d) { form.elements.mmode.querySelector('[value=date]').textContent = 'Am ' + d.getDate() + '. des Monats'; form.elements.mmode.querySelector('[value=nth]').textContent = nthTxt(d).replace('Jeden ', 'Am ').replace(' im Monat', ''); } }
 }
 
 document.addEventListener('click', (e) => {
