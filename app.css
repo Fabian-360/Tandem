@@ -5,7 +5,7 @@ body{overscroll-behavior:none}
 button{font-family:inherit;cursor:pointer;color:inherit}
 input,textarea,select{font-family:inherit;font-size:16px;color:var(--ink)}
 #app{position:relative;display:flex;flex-direction:column;height:100vh;height:100dvh;max-width:560px;margin:0 auto;background:var(--cream)}
-#top{flex:none;padding:calc(env(safe-area-inset-top) + 14px) 20px 10px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+#top{flex:none;background:var(--cream,#FBF7F1);position:relative;z-index:5;padding:calc(env(safe-area-inset-top) + 26px) 20px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .brand{display:flex;align-items:center;gap:8px;font-size:22px;font-weight:800;letter-spacing:-.5px}
 .seg-pill{display:flex;background:#F1EAE0;border-radius:999px;padding:3px}
 .seg-pill button{border:none;border-radius:999px;padding:8px 12px;min-height:36px;font-size:13px;font-weight:700;background:transparent;color:var(--muted)}
@@ -65,8 +65,14 @@ input,textarea,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .tile{background:#fff;border:1px solid var(--line);border-radius:16px;padding:0;overflow:hidden;display:flex;flex-direction:column;align-items:stretch;font-size:12px;font-weight:700;letter-spacing:-.2px;line-height:30px;white-space:nowrap;text-align:center}
 .tile img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover}
 .frame{position:relative;display:block;width:100%;aspect-ratio:1660/1420;border:none;padding:0;background:#B8923F;border-radius:16px;overflow:hidden;box-shadow:0 3px 8px rgba(42,36,34,.25)}
-.frame .inner{position:absolute;left:11.2%;top:13.3%;width:77.6%;height:72.6%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:#EFDCD6;overflow:hidden}
+.frame .inner{position:absolute;left:9%;top:12%;width:82%;height:75.5%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:#EFDCD6;overflow:hidden}
 .frame .inner img{width:100%;height:100%;object-fit:cover}
+.frame .inner img.sl{position:absolute;left:0;top:0;opacity:0;transition:opacity 1.2s ease}
+.frame .inner img.sl.on{opacity:1}
+.ph-prev{position:relative;width:100%;aspect-ratio:1.25;overflow:hidden;border-radius:8px;background:#EFDCD6}
+.ph-prev img{display:block;width:100%;height:100%;object-fit:cover}
+.field input[type=range]{min-height:32px;padding:0;border:none;background:none;accent-color:var(--acc,#C4243B)}
+.field input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;width:100%;text-align:left}
 .frame>img.f{position:absolute;left:-1.5%;top:-1.5%;width:103%;height:103%;pointer-events:none}
 .since{text-align:center;font-size:13px;color:var(--muted);padding:2px 0 4px}
 /* Advent */

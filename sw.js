@@ -1,6 +1,6 @@
 // Tandem Service Worker – speichert die App für die Offline-Nutzung.
 // Nach Änderungen an der App die Versionsnummer erhöhen.
-const VERSION = 'tandem-v3';
+const VERSION = 'tandem-v4';
 const FILES = [
   './',
   'advent.jpg',

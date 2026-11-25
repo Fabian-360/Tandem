@@ -40,7 +40,7 @@ const NAV = [
 let store;
 const S = {
   who: null, tab: 'start', sub: null, ready: false,
-  d: { events: [], todos: [], shop: [], expenses: [], fixed: [], sport: [], recipes: [], dates: [], trips: [], messages: [], reminders: [], diary: [], notes: [], wishes: [], pexpenses: [] },
+  d: { events: [], todos: [], shop: [], expenses: [], fixed: [], sport: [], recipes: [], dates: [], trips: [], messages: [], reminders: [], photos: [], diary: [], notes: [], wishes: [], pexpenses: [] },
   settings: {}, photo: null,
   ui: { calView: 'month', calOff: 0, filter: 'all', listTab: 'todo', mOff: 0, spEdit: false, doorOpen: false, msgOpen: false, recipe: null, dateIdea: null, trip: null },
   topImg: TOPS[Math.floor(Math.random() * TOPS.length)]
@@ -67,7 +67,7 @@ function startSession(who) {
   applyAccent();
   if (!S.ready) {
     S.ready = true;
-    ['events', 'todos', 'shop', 'expenses', 'fixed', 'sport', 'recipes', 'dates', 'trips', 'messages', 'reminders'].forEach(n => store.watch(n, (arr) => { S.d[n] = arr; render(); }));
+    ['events', 'todos', 'shop', 'expenses', 'fixed', 'sport', 'recipes', 'dates', 'trips', 'messages', 'reminders', 'photos'].forEach(n => store.watch(n, (arr) => { S.d[n] = arr; render(); }));
     ['diary', 'notes', 'wishes', 'pexpenses'].forEach(n => store.watch(n, (arr) => { S.d[n] = arr; render(); }, { priv: true }));
     store.watchDoc('settings', (doc) => { S.settings = doc || {}; render(); startFx(); });
     store.watchDoc('photo', (doc) => { S.photo = doc; render(); });
@@ -250,8 +250,8 @@ function viewStart() {
   h += '<div class="card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">Als Nächstes</div>' +
     (nx.length ? nx.map(e => '<div class="row" style="padding:8px 0"><div class="bar" style="background:' + e.bar + '"></div><div style="flex:1"><div class="t15">' + esc(e.t) + '</div><div class="small muted">' + esc(e.when) + '</div></div></div>').join('') : '<div class="empty">Nichts geplant – genießt den Tag.</div>') + '</div>';
   // Foto der Woche
-  const ph = S.photo && S.photo.data;
-  h += '<button class="frame" data-a="photo" aria-label="Foto der Woche ändern"><span class="inner">' + (ph ? '<img src="' + ph + '" alt="Foto der Woche">' :
+  const pl = photoList();
+  h += '<button class="frame" data-a="photo" aria-label="Fotos der Woche verwalten"><span class="inner">' + (pl.length ? pl.map((p, i) => '<img class="sl' + (i === (S.slide % pl.length) ? ' on' : '') + '" src="' + p.data + '" alt="Foto der Woche" style="' + photoStyle(p) + '">').join('') :
     ICON.photo + '<span style="font-size:14px;font-weight:700;color:#4A3D39">Foto der Woche</span><span style="font-size:11px;color:#6B5A55">Tippen zum Hochladen</span>') + '</span><img class="f" src="' + A('rahmen.png') + '" alt=""></button>';
   h += '<div class="since">' + esc(L.sinceText(S.settings.together, d)) + '</div></div>';
   return h;
@@ -513,6 +513,36 @@ const diaryLines = (e) => [['Dankbar', e.g], ['Highlight', e.h], ['Lowlight', e.
 
 // ---------------------------------------------------------------- Sheet (Formulare)
 let sheetSave = null, sheetDel = null;
+function photoList() {
+  const l = (S.d.photos || []).filter(p => p.data).sort((a, b) => (a.at || 0) - (b.at || 0));
+  if (!l.length && S.photo && S.photo.data) return [Object.assign({ id: '__legacy' }, S.photo)];
+  return l;
+}
+function photoStyle(p) {
+  const z = Math.max(1, Math.min(3, +p.zoom || 1)), x = isFinite(+p.x) ? +p.x : 50, y = isFinite(+p.y) ? +p.y : 50;
+  return 'object-position:' + x + '% ' + y + '%;transform:scale(' + z + ');transform-origin:' + x + '% ' + y + '%';
+}
+S.slide = 0;
+setInterval(() => {
+  const imgs = document.querySelectorAll('.frame .inner img.sl'); if (imgs.length < 2) return;
+  S.slide = (S.slide + 1) % imgs.length; imgs.forEach((im, i) => im.classList.toggle('on', i === S.slide));
+}, 6000);
+function openPhotos() {
+  const pl = photoList().filter(p => p.id !== '__legacy');
+  const rows = pl.map(p => '<div class="card stack" data-pid="' + p.id + '"><div class="ph-prev"><img src="' + p.data + '" alt="" style="' + photoStyle(p) + '"></div>' +
+    '<label class="field">Zoom<input type="range" min="1" max="3" step="0.05" name="zoom_' + p.id + '" value="' + (p.zoom || 1) + '"></label>' +
+    '<label class="field">Links ↔ Rechts<input type="range" min="0" max="100" step="1" name="x_' + p.id + '" value="' + (isFinite(+p.x) ? p.x : 50) + '"></label>' +
+    '<label class="field">Oben ↕ Unten<input type="range" min="0" max="100" step="1" name="y_' + p.id + '" value="' + (isFinite(+p.y) ? p.y : 50) + '"></label>' +
+    '<button type="button" class="btn ghost small" style="color:#A32D2D" data-a="photoDel" data-id="' + p.id + '">Foto entfernen</button></div>').join('');
+  openSheet('Fotos der Woche', '<div class="small muted">Mehrere Fotos laufen als Diashow (alle 6 Sekunden). Mit Zoom und den Reglern legst du den Ausschnitt fest.</div>' +
+    '<button type="button" class="btn" data-a="photoAdd">+ Fotos hinzufügen</button>' + (rows || '<div class="small muted">Noch keine Fotos.</div>'),
+    async (f) => { for (const p of pl) { const z = +f['zoom_' + p.id], x = +f['x_' + p.id], y = +f['y_' + p.id]; if (z !== (+p.zoom || 1) || x !== (isFinite(+p.x) ? +p.x : 50) || y !== (isFinite(+p.y) ? +p.y : 50)) await store.update('photos', p.id, { zoom: z, x, y }); } });
+  document.querySelectorAll('#sheet [data-pid]').forEach(card => {
+    const img = card.querySelector('.ph-prev img'), id = card.dataset.pid;
+    const upd = () => { img.setAttribute('style', photoStyle({ zoom: card.querySelector('[name=zoom_' + id + ']').value, x: card.querySelector('[name=x_' + id + ']').value, y: card.querySelector('[name=y_' + id + ']').value })); };
+    card.querySelectorAll('input[type=range]').forEach(r => r.addEventListener('input', upd));
+  });
+}
 function openSheet(title, fields, onSave, onDel) {
   sheetSave = onSave; sheetDel = onDel || null;
   const el = $('#sheet'); el.className = 'show';
@@ -544,7 +574,9 @@ const ACT = {
   react(v, el) { store.update('messages', el.dataset.id, { reaction: v }); },
   msgOpen() { set('msgOpen', true); setTimeout(() => { const t = document.querySelector('[data-keep="msg"]'); if (t) t.focus(); }, 50); },
   msgClose() { set('msgOpen', false); },
-  photo() { $('#photoInput').click(); },
+  photo() { openPhotos(); },
+  photoAdd() { $('#photoInput').click(); },
+  async photoDel(id) { if (!confirm('Dieses Foto entfernen?')) return; await store.remove('photos', id); closeSheet(); setTimeout(openPhotos, 300); },
   calNav(v) { set('calOff', S.ui.calOff + Number(v)); },
   calView(v) { set({ calView: v, calOff: 0 }); },
   calFilter(v) { set('filter', v); },
@@ -676,18 +708,23 @@ document.addEventListener('change', (e) => {
 
 // Foto der Woche: verkleinern und als JPEG-Text speichern (≤ 900 KB)
 $('#photoInput').addEventListener('change', async (e) => {
-  const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
-  try {
-    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
-    let max = 1200, q = 0.8, data = '';
-    for (let k = 0; k < 8; k++) {
-      const sc = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
-      c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      data = c.toDataURL('image/jpeg', q); if (data.length <= 900000) break;
-      q = Math.max(0.5, q - 0.1); if (q === 0.5) max = Math.round(max * 0.8);
-    }
-    await store.setDoc('photo', { data, by: S.who, at: Date.now() });
-  } catch (x) { alert('Das Foto konnte nicht geladen werden.'); }
+  const files = Array.from(e.target.files || []); e.target.value = ''; if (!files.length) return;
+  let ok = 0;
+  for (const file of files) {
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+      let max = 1200, q = 0.8, data = '';
+      for (let k = 0; k < 8; k++) {
+        const sc = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        data = c.toDataURL('image/jpeg', q); if (data.length <= 900000) break;
+        q = Math.max(0.5, q - 0.1); if (q === 0.5) max = Math.round(max * 0.8);
+      }
+      await store.add('photos', { data, by: S.who, at: Date.now(), zoom: 1, x: 50, y: 50 }); ok++;
+    } catch (x) { console.warn(x); }
+  }
+  if (!ok) alert('Die Fotos konnten nicht geladen werden.');
+  closeSheet(); setTimeout(openPhotos, 400);
 });
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
