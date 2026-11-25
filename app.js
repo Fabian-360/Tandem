@@ -289,8 +289,8 @@ function nextTrip() {
 }
 function nextUp() {
   const t = tISO(), d = today(), res = [];
-  S.d.events.filter(e => e.date >= t).sort((a, b) => (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1).slice(0, 3)
-    .forEach(e => res.push({ t: e.title, when: (e.date === t ? 'Heute' : L.fmtShort(L.parseISO(e.date))) + (e.time ? ' · ' + e.time : ''), bar: COL[e.who] || COL.b, k: e.date + (e.time || '') }));
+  instRange(S.d.events, t, 120).sort((a, b) => (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1).slice(0, 3)
+    .forEach(e => res.push({ t: e.title, when: (e.date === t ? 'Heute' : L.fmtShort(L.parseISO(e.date))) + (e.time ? ' · ' + e.time : e.bday ? ' · Geburtstag' : ''), bar: evBar(e), k: e.date + (e.time || '') }));
   S.d.todos.filter(x => !x.done && x.due && (x.who === S.who || x.who === 'b')).sort((a, b) => a.due < b.due ? -1 : 1).slice(0, 2)
     .forEach(x => res.push({ t: x.title, when: 'To-Do · ' + (x.due === t ? 'heute' : x.due < t ? 'überfällig' : L.fmtShort(L.parseISO(x.due))), bar: COL[x.who], k: x.due }));
   return res.sort((a, b) => a.k < b.k ? -1 : 1).slice(0, 4);
@@ -380,16 +380,49 @@ function viewTrips() {
 }
 const tripBtn = (x, cur) => '<button data-a="pickTrip" data-id="' + x.id + '" style="width:100%;display:flex;justify-content:space-between;align-items:center;min-height:52px;padding:0 16px;border-radius:14px;font-size:16px;font-weight:700;' + (cur && x.id === cur.id ? 'border:none;background:var(--acc);color:var(--acc-on)' : 'border:1px solid var(--line);background:#fff;color:var(--ink)') + '"><span>' + esc(x.name) + '</span><span style="font-size:13px;opacity:.8">' + L.MS[L.parseISO(x.start).getMonth()] + ' ' + x.start.slice(0, 4) + '</span></button>';
 
+
+// ---------------------------------------------------------------- Wiederholungen & Geburtstage
+const BDAY = '#E2B53A', BDAY_BG = '#FCEFC2';
+const nthOf = (d) => Math.ceil(d.getDate() / 7); // 1..5 (5 = letzter)
+const nthTxt = (d) => { const n = nthOf(d); return 'Jeden ' + (n === 5 ? 'letzten' : n + '.') + ' ' + L.WDL[d.getDay()] + ' im Monat'; };
+function occurs(e, d) {
+  const b = L.parseISO(e.date); if (!b) return false;
+  const k = L.iso(d), r = e.bday ? 'y' : (e.rep || '');
+  if (k < e.date) return false;
+  if (!r) return k === e.date;
+  if (e.until && k > e.until) return false;
+  if (r === 'w1' || r === 'w2') { const diff = L.dayDiff(b, d); return diff % (r === 'w2' ? 14 : 7) === 0; }
+  if (r === 'm') return d.getDate() === b.getDate();
+  if (r === 'nth') { if (d.getDay() !== b.getDay()) return false; const n = nthOf(b); return n === 5 ? L.addDays(d, 7).getMonth() !== d.getMonth() : nthOf(d) === n; }
+  if (r === 'y') return d.getDate() === b.getDate() && d.getMonth() === b.getMonth();
+  return false;
+}
+function repLabel(e) {
+  if (e.bday) return '';
+  const b = L.parseISO(e.date);
+  return { w1: 'jede Woche', w2: 'alle 2 Wochen', m: 'monatlich', nth: b ? nthTxt(b).replace('Jeden', 'jeden').replace(' im Monat', '') : '', y: 'jährlich' }[e.rep] || '';
+}
+function evInst(e, k) {
+  const d = L.parseISO(k), b = L.parseISO(e.date);
+  let sub = e.time || (e.bday ? '' : 'ganztägig');
+  if (e.bday) { const age = d.getFullYear() - b.getFullYear(); sub = 'Geburtstag' + (age > 0 && b.getFullYear() > 1900 ? ' · wird ' + age : ''); }
+  else { const r = repLabel(e); if (r) sub += ' · ' + r; }
+  return Object.assign({}, e, { date: k, sub, title: (e.bday ? '🎂 ' : '') + e.title });
+}
+function instOn(list, k) { const d = L.parseISO(k); return list.filter(e => occurs(e, d)).map(e => evInst(e, k)); }
+function instRange(list, fromK, days) { const out = []; let d = L.parseISO(fromK); for (let i = 0; i < days; i++) { const k = L.iso(d); instOn(list, k).forEach(x => out.push(x)); d = L.addDays(d, 1); } return out; }
+const evBar = (e) => e.bday ? BDAY : (COL[e.who] || COL.b);
+
 // ---------------------------------------------------------------- Kalender
 function viewCal() {
   const d0 = today(), t = tISO(), u = S.ui, flt = u.filter;
   const years = [d0.getFullYear() - 1, d0.getFullYear(), d0.getFullYear() + 1, d0.getFullYear() + 2];
   const hol = L.holidayMap(years);
   const keep = (e) => e.who === 'b' || flt === 'all' || (flt === 'me' ? e.who === S.who : e.who !== S.who);
-  const evs = S.d.events.filter(keep).sort((a, b) => (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1);
-  const evOn = (k) => evs.filter(e => e.date === k);
+  const evs = S.d.events.filter(keep);
+  const evOn = (k) => instOn(evs, k).sort((a, b) => (b.bday ? 1 : 0) - (a.bday ? 1 : 0) || ((a.time || '') < (b.time || '') ? -1 : 1));
   const holRow = (k) => hol[k] ? [{ title: hol[k].name, time: hol[k].kind, hol: true }] : [];
-  const evRow = (e) => '<button class="row" style="width:100%;background:none;border:none;padding:10px 0;border-bottom:1px solid var(--soft-line);text-align:left" ' + (e.hol ? 'data-a="noop"' : 'data-a="editEvent" data-id="' + e.id + '"') + '><span class="bar" style="background:' + (e.hol ? COL.h : COL[e.who] || COL.b) + '"></span><span style="flex:1"><span class="t15" style="display:block">' + esc(e.title) + '</span><span class="small muted">' + esc(e.when || '') + '</span></span></button>';
+  const evRow = (e) => '<button class="row" style="width:100%;border:none;padding:10px ' + (e.bday ? '10px;margin:4px 0;border-radius:12px;background:' + BDAY_BG : '0;background:none;border-bottom:1px solid var(--soft-line)') + ';text-align:left" ' + (e.hol ? 'data-a="noop"' : 'data-a="editEvent" data-id="' + e.id + '"') + '><span class="bar" style="background:' + (e.hol ? COL.h : evBar(e)) + '"></span><span style="flex:1"><span class="t15" style="display:block">' + esc(e.title) + '</span><span class="small muted">' + esc(e.when || '') + '</span></span></button>';
   let title, body = '';
   if (u.calView === 'week') {
     const mon = L.addDays(d0, -((d0.getDay() + 6) % 7) + u.calOff * 7), sun = L.addDays(mon, 6);
@@ -397,7 +430,7 @@ function viewCal() {
     body = '<div class="card" style="padding:4px 16px">' + Array.from({ length: 7 }, (_, i) => {
       const dt = L.addDays(mon, i), k = L.iso(dt), items = holRow(k).concat(evOn(k)), cls = k === t ? 'today' : hol[k] ? 'hol' : '';
       return '<div class="row" style="gap:14px;padding:12px 0;border-bottom:1px solid var(--soft-line);align-items:flex-start"><button class="wdlabel ' + cls + '" style="border:none" data-a="newEvent" data-v="' + k + '"><div style="font-size:12px;font-weight:700">' + L.WD[dt.getDay()] + '</div><div style="font-size:20px;font-weight:800">' + dt.getDate() + '</div></button><div style="flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center;min-height:48px">' +
-        (items.length ? items.map(e => '<button class="row" style="gap:10px;background:none;border:none;padding:0;text-align:left" ' + (e.hol ? 'data-a="noop"' : 'data-a="editEvent" data-id="' + e.id + '"') + '><span class="bar" style="height:30px;background:' + (e.hol ? COL.h : COL[e.who] || COL.b) + '"></span><span><span class="t15" style="display:block">' + esc(e.title) + '</span><span class="small muted">' + esc(e.time || 'ganztägig') + '</span></span></button>').join('') : '<div style="font-size:14px;color:#9A8F87">Nichts geplant</div>') + '</div></div>';
+        (items.length ? items.map(e => '<button class="row" style="gap:10px;border:none;text-align:left;' + (e.bday ? 'background:' + BDAY_BG + ';padding:6px 10px;border-radius:12px' : 'background:none;padding:0') + '" ' + (e.hol ? 'data-a="noop"' : 'data-a="editEvent" data-id="' + e.id + '"') + '><span class="bar" style="height:30px;background:' + (e.hol ? COL.h : evBar(e)) + '"></span><span><span class="t15" style="display:block">' + esc(e.title) + '</span><span class="small muted">' + esc(e.hol ? e.time : e.sub) + '</span></span></button>').join('') : '<div style="font-size:14px;color:#9A8F87">Nichts geplant</div>') + '</div></div>';
     }).join('') + '</div>';
   } else {
     const first = new Date(d0.getFullYear(), d0.getMonth() + u.calOff, 1), y = first.getFullYear(), mo = first.getMonth();
@@ -407,14 +440,16 @@ function viewCal() {
     for (let i = 0; i < lead; i++) cells += '<div class="cell"></div>';
     for (let dd = 1; dd <= dim; dd++) {
       const k = L.iso(new Date(y, mo, dd)), cls = k === t ? 'today' : hol[k] ? 'hol' : '';
-      cells += '<button class="cell" data-a="newEvent" data-v="' + k + '"><span class="n ' + cls + '">' + dd + '</span><span class="dots">' + evOn(k).slice(0, 3).map(e => '<i style="background:' + (COL[e.who] || COL.b) + '"></i>').join('') + '</span></button>';
+      const on = evOn(k), bd = on.some(e => e.bday);
+      cells += '<button class="cell" data-a="newEvent" data-v="' + k + '"' + (bd ? ' style="background:' + BDAY_BG + ';border-radius:12px"' : '') + '><span class="n ' + cls + '">' + dd + '</span><span class="dots">' + on.slice(0, 3).map(e => '<i style="background:' + evBar(e) + '"></i>').join('') + '</span></button>';
     }
     body = '<div class="card" style="padding:12px"><div class="calhead"><div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div></div><div class="calgrid">' + cells + '</div></div>' +
-      '<div class="legend"><span><i style="background:#C4243B"></i>Fabian</span><span><i style="background:#F2B8C2"></i>Lena</span><span><i style="background:#2A2422"></i>Gemeinsam</span><span><i style="background:#2E5E45"></i>Feiertag</span></div>';
+      '<div class="legend"><span><i style="background:#C4243B"></i>Fabian</span><span><i style="background:#F2B8C2"></i>Lena</span><span><i style="background:#2A2422"></i>Gemeinsam</span><span><i style="background:#2E5E45"></i>Feiertag</span><span><i style="background:' + BDAY + '"></i>Geburtstag</span></div>';
     const from = u.calOff === 0 ? t : L.iso(first), mk = y + '-' + L.pad(mo + 1);
     const list = [];
     Object.keys(hol).filter(k => k.slice(0, 7) === mk && k >= from).forEach(k => list.push({ k, title: hol[k].name, when: L.fmtShort(L.parseISO(k)) + ' · ' + hol[k].kind, hol: true }));
-    evs.filter(e => e.date.slice(0, 7) === mk && e.date >= from).forEach(e => list.push(Object.assign({ k: e.date + (e.time || '') }, e, { when: (e.date === t ? 'Heute' : L.fmtShort(L.parseISO(e.date))) + (e.time ? ' · ' + e.time : '') })));
+    const endK = L.iso(new Date(y, mo + 1, 0));
+    instRange(evs, from, L.dayDiff(L.parseISO(from), L.parseISO(endK)) + 1).forEach(e => list.push(Object.assign({ k: e.date + (e.bday ? '' : (e.time || '~')) }, e, { when: (e.date === t ? 'Heute' : L.fmtShort(L.parseISO(e.date))) + (e.sub && e.sub !== 'ganztägig' ? ' · ' + e.sub : '') })));
     list.sort((a, b) => a.k < b.k ? -1 : 1);
     body += '<div class="card" style="padding:4px 16px">' + (list.length ? list.map(evRow).join('') : '<div class="empty" style="padding:12px 0">Noch keine Termine in diesem Monat</div>') + '</div>';
   }
@@ -677,10 +712,37 @@ const ACT = {
 };
 
 function eventSheet(x, date) {
-  openSheet(x ? 'Termin bearbeiten' : 'Neuer Termin', fText('title', 'Was?', x && x.title, 'Zahnarzt', 'required') + fDate('date', 'Datum', x ? x.date : date, 'required') +
-    '<label class="field">Uhrzeit (optional)<input type="time" name="time" value="' + esc(x ? x.time || '' : '') + '"></label>' + fSel('who', 'Für wen?', x ? x.who : S.who, whoOpts()),
-    (f) => { if (!f.title.trim()) return false; const d = { title: f.title.trim(), date: f.date, time: f.time || '', who: f.who }; return x ? store.update('events', x.id, d) : store.add('events', Object.assign(d, { by: S.who })); },
+  const bd = !!(x && x.bday), d0 = L.parseISO(x ? x.date : date) || today(), r = x ? (x.rep || '') : '';
+  const whoBd = [[S.who, 'Für mich (' + me() + ')'], ['b', 'Gemeinsam']];
+  openSheet(x ? (bd ? 'Geburtstag bearbeiten' : 'Termin bearbeiten') : 'Neuer Termin',
+    fSel('evkind', 'Art', bd ? 'bday' : 'ev', [['ev', 'Termin'], ['bday', 'Geburtstag 🎂 (jedes Jahr, gelb)']]) +
+    fText('title', '<span class="ev-l">' + (bd ? 'Wessen Geburtstag?' : 'Was?') + '</span>', x && x.title, bd ? 'Oma Ingrid' : 'Zahnarzt', 'required') +
+    fDate('date', '<span class="ev-d">' + (bd ? 'Geburtsdatum (mit Jahr, dann steht das Alter dabei)' : 'Datum') + '</span>', x ? x.date : date, 'required') +
+    '<div class="ev-only stack" style="gap:14px' + (bd ? ';display:none' : '') + '"><label class="field">Uhrzeit (optional)<input type="time" name="time" value="' + esc(x ? x.time || '' : '') + '"></label>' +
+    fSel('rep', 'Wiederholen', r, [['', 'Nicht wiederholen'], ['w1', 'Jede Woche'], ['w2', 'Alle 2 Wochen'], ['m', 'Jeden Monat am ' + d0.getDate() + '.'], ['nth', nthTxt(d0)], ['y', 'Jedes Jahr']]) +
+    '<div class="ev-until"' + (r ? '' : ' style="display:none"') + '>' + fDate('until', 'Wiederholen bis (optional)', x && x.until) + '</div></div>' +
+    fSel('who', 'Für wen?', x ? x.who : S.who, bd ? whoBd : whoOpts()),
+    (f) => {
+      if (!f.title.trim()) return false;
+      const isB = f.evkind === 'bday';
+      const d = { title: f.title.trim(), date: f.date, who: isB && f.who !== 'b' ? S.who : f.who, bday: isB, time: isB ? '' : (f.time || ''), rep: isB ? 'y' : (f.rep || ''), until: isB || !f.rep ? '' : (f.until || '') };
+      return x ? store.update('events', x.id, d) : store.add('events', Object.assign(d, { by: S.who }));
+    },
     x ? () => store.remove('events', x.id) : null);
+}
+function eventSheetSync(form, el) {
+  const isB = form.evkind.value === 'bday';
+  if (el.name === 'evkind') {
+    form.querySelector('.ev-only').style.display = isB ? 'none' : '';
+    form.querySelector('.ev-l').textContent = isB ? 'Wessen Geburtstag?' : 'Was?';
+    form.querySelector('.ev-d').textContent = isB ? 'Geburtsdatum (mit Jahr, dann steht das Alter dabei)' : 'Datum';
+    form.elements.title.placeholder = isB ? 'Oma Ingrid' : 'Zahnarzt';
+    const opts = isB ? [[S.who, 'Für mich (' + me() + ')'], ['b', 'Gemeinsam']] : whoOpts(), cur = form.elements.who.value;
+    form.elements.who.innerHTML = opts.map(o => '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('');
+  }
+  const rp = form.elements.rep;
+  if (el.name === 'date' && rp) { const d = L.parseISO(form.elements.date.value); if (d) { rp.querySelector('[value=m]').textContent = 'Jeden Monat am ' + d.getDate() + '.'; rp.querySelector('[value=nth]').textContent = nthTxt(d); } }
+  if (el.name === 'rep') form.querySelector('.ev-until').style.display = rp.value ? '' : 'none';
 }
 
 document.addEventListener('click', (e) => {
@@ -702,6 +764,7 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => {
   const el = e.target;
+  if (el.form && el.form.id === 'sheetForm' && el.form.elements.evkind) eventSheetSync(el.form, el);
   if (el.dataset && el.dataset.setting) store.setDoc('settings', { [el.dataset.setting]: el.value });
   if (el.dataset && el.dataset.goodie) { const n = Object.assign({}, S.settings.goodieNames || {}); n[el.dataset.goodie] = el.value.trim() || 'Goodie'; store.setDoc('settings', { goodieNames: n }); }
 });
