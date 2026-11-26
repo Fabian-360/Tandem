@@ -220,8 +220,15 @@ function greeting() {
   return h < 11 ? 'Guten Morgen, ' + n + '!' : h < 17 ? 'Moin ' + n + '!' : h < 22 ? 'Schönen Abend, ' + n + '!' : 'Gute Nacht, ' + n + '!';
 }
 
+function frameHTML() {
+  const pl = photoList();
+  return '<button class="frame" data-a="photo" aria-label="Fotos verwalten"><span class="inner">' + (pl.length ? pl.map((p, i) => '<img class="sl' + (i === (S.slide % pl.length) ? ' on' : '') + '" src="' + p.data + '" alt="Foto" style="' + photoStyle(p) + '">').join('') :
+    ICON.photo + '<span style="font-size:14px;font-weight:700;color:#4A3D39">Unsere Fotos</span><span style="font-size:11px;color:#6B5A55">Tippen zum Hochladen</span>') + '</span><img class="f" src="' + A('rahmen.png') + '" alt=""></button>';
+}
 function viewStart() {
   const d = today(), th = computeTheme();
+  // Normale Tage: Fotos oben, Gemälde unten. Feste, Advent und Feiertage: Festbild oben, Fotos unten.
+  const special = !!th || !!L.dayImageKey(d);
   let h = '<div class="stack">';
   if (th) {
     h += '<div class="festcard"><img src="' + A(th.img + '.jpg') + '" alt="" style="object-position:' + (th.pos || 'center') + '"><div class="particles">' + particlesHTML(th.parts) + '</div></div>';
@@ -231,7 +238,8 @@ function viewStart() {
     if (th.door) h += viewAdvent(th);
   } else {
     const key = L.dayImageKey(d), di = key ? DAYIMG[key] : null, img = di ? di[0] : S.topImg;
-    h += '<div class="hero" style="height:' + (di && di[2] ? di[2] : 380) + 'px"><img src="' + A(img + '.jpg') + '" alt="" style="object-position:' + (TOPPOS[img] || 'center') + '">' + (di ? '<span class="tag">' + di[1] + '</span>' : '') + '</div>';
+    if (special) h += '<div class="hero" style="height:' + (di && di[2] ? di[2] : 380) + 'px"><img src="' + A(img + '.jpg') + '" alt="" style="object-position:' + (TOPPOS[img] || 'center') + '">' + (di ? '<span class="tag">' + di[1] + '</span>' : '') + '</div>';
+    else h += frameHTML();
     h += '<div style="padding:0 4px"><div class="small muted">' + L.fmtLong(d) + '</div><div style="font-size:26px;font-weight:800;letter-spacing:-.5px">' + esc(greeting()) + '</div></div>';
   }
   h += viewBoard();
@@ -249,10 +257,9 @@ function viewStart() {
   const nx = nextUp();
   h += '<div class="card"><div style="font-size:15px;font-weight:700;margin-bottom:4px">Als Nächstes</div>' +
     (nx.length ? nx.map(e => '<div class="row" style="padding:8px 0"><div class="bar" style="background:' + e.bar + '"></div><div style="flex:1"><div class="t15">' + esc(e.t) + '</div><div class="small muted">' + esc(e.when) + '</div></div></div>').join('') : '<div class="empty">Nichts geplant – genießt den Tag.</div>') + '</div>';
-  // Foto der Woche
-  const pl = photoList();
-  h += '<button class="frame" data-a="photo" aria-label="Fotos der Woche verwalten"><span class="inner">' + (pl.length ? pl.map((p, i) => '<img class="sl' + (i === (S.slide % pl.length) ? ' on' : '') + '" src="' + p.data + '" alt="Foto der Woche" style="' + photoStyle(p) + '">').join('') :
-    ICON.photo + '<span style="font-size:14px;font-weight:700;color:#4A3D39">Foto der Woche</span><span style="font-size:11px;color:#6B5A55">Tippen zum Hochladen</span>') + '</span><img class="f" src="' + A('rahmen.png') + '" alt=""></button>';
+  // unten: Fotos an Festtagen, sonst das Gemälde
+  if (special) h += frameHTML();
+  else h += '<div class="hero" style="height:320px"><img src="' + A(S.topImg + '.jpg') + '" alt="" style="object-position:' + (TOPPOS[S.topImg] || 'center') + '"></div>';
   h += '<div class="since">' + esc(L.sinceText(S.settings.together, d)) + '</div></div>';
   return h;
 }
@@ -422,9 +429,18 @@ function evInst(e, k) {
   let sub = e.time || (e.bday ? '' : 'ganztägig');
   if (e.bday) { const age = d.getFullYear() - b.getFullYear(); sub = 'Geburtstag' + (age > 0 && b.getFullYear() > 1900 ? ' · wird ' + age : ''); }
   else { const r = repLabel(e); if (r) sub += ' · ' + r; }
-  return Object.assign({}, e, { date: k, sub, title: (e.bday ? '🎂 ' : '') + e.title });
+  const dur = evDur(e), endK = dur ? L.iso(L.addDays(d, dur)) : k;
+  if (dur) sub = 'bis ' + L.fmtShort(L.parseISO(endK)) + (e.time ? ' · ab ' + e.time : '') + (repLabel(e) ? ' · ' + repLabel(e) : '');
+  return Object.assign({}, e, { date: k, endK, dur, sub, title: (e.bday ? '🎂 ' : '') + e.title });
 }
+const evDur = (e) => (!e.bday && e.end && e.end > e.date) ? L.dayDiff(L.parseISO(e.date), L.parseISO(e.end)) : 0;
 function instOn(list, k) { const d = L.parseISO(k); return list.filter(e => occurs(e, d)).map(e => evInst(e, k)); }
+// alle Termine, die an Tag k stattfinden (auch mehrtägige, die vorher angefangen haben)
+function instCover(list, k) {
+  const d = L.parseISO(k), out = [];
+  list.forEach(e => { const dur = evDur(e); for (let i = 0; i <= dur; i++) { const st = L.addDays(d, -i); if (occurs(e, st)) { out.push(evInst(e, L.iso(st))); break; } } });
+  return out;
+}
 function instRange(list, fromK, days) { const out = []; let d = L.parseISO(fromK); for (let i = 0; i < days; i++) { const k = L.iso(d); instOn(list, k).forEach(x => out.push(x)); d = L.addDays(d, 1); } return out; }
 const evBar = (e) => e.bday ? BDAY : (COL[e.who] || COL.b);
 
@@ -435,7 +451,7 @@ function viewCal() {
   const hol = L.holidayMap(years);
   const keep = (e) => e.who === 'b' || flt === 'all' || (flt === 'me' ? e.who === S.who : e.who !== S.who);
   const evs = S.d.events.filter(keep);
-  const evOn = (k) => instOn(evs, k).sort((a, b) => (b.bday ? 1 : 0) - (a.bday ? 1 : 0) || ((a.time || '') < (b.time || '') ? -1 : 1));
+  const evOn = (k) => instCover(evs, k).sort((a, b) => (b.bday ? 1 : 0) - (a.bday ? 1 : 0) || ((a.time || '') < (b.time || '') ? -1 : 1));
   const holRow = (k) => hol[k] ? [{ title: hol[k].name, time: hol[k].kind, hol: true }] : [];
   const evRow = (e) => '<button class="row" style="width:100%;border:none;padding:10px ' + (e.bday ? '10px;margin:4px 0;border-radius:12px;background:' + BDAY_BG : '0;background:none;border-bottom:1px solid var(--soft-line)') + ';text-align:left" ' + (e.hol ? 'data-a="noop"' : 'data-a="editEvent" data-id="' + e.id + '"') + '><span class="bar" style="background:' + (e.hol ? COL.h : evBar(e)) + '"></span><span style="flex:1"><span class="t15" style="display:block">' + esc(e.title) + '</span><span class="small muted">' + esc(e.when || '') + '</span></span></button>';
   let title, body = '';
@@ -451,14 +467,38 @@ function viewCal() {
     const first = new Date(d0.getFullYear(), d0.getMonth() + u.calOff, 1), y = first.getFullYear(), mo = first.getMonth();
     title = L.MON[mo] + ' ' + y;
     const lead = (first.getDay() + 6) % 7, dim = new Date(y, mo + 1, 0).getDate();
-    let cells = '';
-    for (let i = 0; i < lead; i++) cells += '<div class="cell"></div>';
-    for (let dd = 1; dd <= dim; dd++) {
-      const k = L.iso(new Date(y, mo, dd)), cls = k === t ? 'today' : hol[k] ? 'hol' : '';
-      const on = evOn(k), bd = on.some(e => e.bday);
-      cells += '<button class="cell" data-a="newEvent" data-v="' + k + '"' + (bd ? ' style="background:' + BDAY_BG + ';border-radius:12px"' : '') + '><span class="n ' + cls + '">' + dd + '</span><span class="dots">' + on.slice(0, 3).map(e => '<i style="background:' + evBar(e) + '"></i>').join('') + '</span></button>';
+    const gStart = L.addDays(first, -lead), weeks = Math.ceil((lead + dim) / 7), LANES = 4;
+    let grid = '';
+    for (let w = 0; w < weeks; w++) {
+      const ws = L.addDays(gStart, w * 7), wk = [];
+      // Abschnitte dieser Woche sammeln
+      const segs = [];
+      for (let c = 0; c < 7; c++) { const k = L.iso(L.addDays(ws, c)); if (hol[k]) segs.push({ c0: c, c1: c, title: hol[k].name, hol: true }); }
+      const seen = {};
+      for (let c = 0; c < 7; c++) {
+        const k = L.iso(L.addDays(ws, c));
+        evOn(k).forEach(e => { const key = e.id + '|' + e.date; if (seen[key]) return; seen[key] = 1; const s0 = Math.max(0, L.dayDiff(ws, L.parseISO(e.date))), s1 = Math.min(6, L.dayDiff(ws, L.parseISO(e.endK))); segs.push({ c0: s0, c1: s1, e }); });
+      }
+      segs.sort((a, b) => a.c0 - b.c0 || (b.c1 - b.c0) - (a.c1 - a.c0) || ((a.e && a.e.bday) ? -1 : 0));
+      const lanes = [], more = [0, 0, 0, 0, 0, 0, 0];
+      let bars = '';
+      segs.forEach(sg => {
+        let l = 0; while (l < LANES && lanes[l] && lanes[l].some(x => !(sg.c1 < x[0] || sg.c0 > x[1]))) l++;
+        if (l >= LANES) { for (let c = sg.c0; c <= sg.c1; c++) more[c]++; return; }
+        (lanes[l] = lanes[l] || []).push([sg.c0, sg.c1]);
+        const e = sg.e, bg = sg.hol ? COL.h : e.bday ? BDAY : evBar(e), fg = sg.hol ? '#fff' : (e.bday || e.who === 'p') ? '#2A2422' : '#fff';
+        const contL = e && L.parseISO(e.date) < ws, contR = e && L.parseISO(e.endK) > L.addDays(ws, 6);
+        bars += '<' + (sg.hol ? 'span' : 'button data-a="editEvent" data-id="' + e.id + '"') + ' class="mbar" style="grid-row:' + (l + 2) + ';grid-column:' + (sg.c0 + 1) + ' / ' + (sg.c1 + 2) + ';background:' + bg + ';color:' + fg + ';border-radius:' + (contL ? '0' : '4px') + ' ' + (contR ? '0 0' : '4px 4px') + ' ' + (contL ? '0' : '4px') + '">' + esc(sg.hol ? sg.title : e.title) + '</' + (sg.hol ? 'span' : 'button') + '>';
+      });
+      let days = '';
+      for (let c = 0; c < 7; c++) {
+        const dt = L.addDays(ws, c), k = L.iso(dt), inM = dt.getMonth() === mo, cls = k === t ? 'today' : hol[k] ? 'hol' : '';
+        const bd = inM && evOn(k).some(e => e.bday);
+        days += '<button class="mday' + (inM ? '' : ' out') + '" data-a="newEvent" data-v="' + k + '" style="grid-column:' + (c + 1) + (bd ? ';background:' + BDAY_BG : '') + '"><span class="n ' + (inM ? cls : '') + '">' + dt.getDate() + '</span>' + (more[c] ? '<span class="more">+' + more[c] + '</span>' : '') + '</button>';
+      }
+      grid += '<div class="mweek" style="grid-template-rows:28px repeat(' + Math.max(2, lanes.length) + ',17px)">' + days + bars + '</div>';
     }
-    body = '<div class="card" style="padding:12px"><div class="calhead"><div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div></div><div class="calgrid">' + cells + '</div></div>' +
+    body = '<div class="card" style="padding:12px"><div class="calhead"><div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div></div><div class="mgrid">' + grid + '</div></div>' +
       '<div class="legend"><span><i style="background:#C4243B"></i>Fabian</span><span><i style="background:#F2B8C2"></i>Lena</span><span><i style="background:#2A2422"></i>Gemeinsam</span><span><i style="background:#2E5E45"></i>Feiertag</span><span><i style="background:' + BDAY + '"></i>Geburtstag</span></div>';
     const from = u.calOff === 0 ? t : L.iso(first), mk = y + '-' + L.pad(mo + 1);
     const list = [];
@@ -523,11 +563,19 @@ function viewSport() {
   const entries = S.d.sport, gs = L.goodieStatus(entries, red), streak = L.sportStreaks(entries, tISO()), edit = S.ui.spEdit;
   const cols = [['f', 'Fabian', '#C4243B'], ['b', 'Wir', '#2B3A55'], ['p', 'Lena', '#C76A80']];
   const total = (red.f || 0) + (red.b || 0) + (red.p || 0);
-  let h = '<div class="stack"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><div class="row" style="gap:10px;flex-wrap:wrap"><span class="fell" style="font-size:28px">Sport-Liste</span><button class="chip ' + (edit ? 'on' : '') + '" data-a="spEdit">' + (edit ? 'Fertig' : 'Bearbeiten') + '</button></div>' +
-    '<div class="small muted" style="margin-top:2px;line-height:1.4;font-size:14px">Alle 5 Einträge gibt es ein Goodie vom anderen.<br>Flamme: mind. 2× Sport pro Woche<br>(allein oder gemeinsam).</div></div>' +
+  // Goodie-Liste je Spalte (der Reihe nach, danach geht es von vorne los)
+  const gl = (k) => { const l = (st.goodieList && st.goodieList[k]) || []; return l.length ? l : [names[k]]; };
+  const gName = (k, i) => { const l = gl(k); return l[i % l.length]; };
+  let h = '<div class="stack"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="min-width:0"><div class="row" style="gap:8px;flex-wrap:nowrap;margin-top:6px"><span class="fell" style="font-size:25px;white-space:nowrap">Sport-Liste</span><button class="chip ' + (edit ? 'on' : '') + '" data-a="spEdit">' + (edit ? 'Fertig' : 'Bearbeiten') + '</button><button class="qbtn' + (S.ui.spHelp ? ' on' : '') + '" data-a="spHelp" aria-label="Regeln anzeigen">?</button></div></div>' +
     '<div class="counter"><div style="font-size:22px;font-weight:800;line-height:1;color:#2B3A55">' + total + '</div><div style="font-size:11px;font-weight:700;margin-top:3px" class="muted">Goodies<br>eingelöst</div></div></div>';
+  if (S.ui.spHelp) h += '<div class="card" style="font-size:14px;line-height:1.5"><div style="font-size:15px;font-weight:800;margin-bottom:6px">So funktioniert die Sport-Liste</div>' +
+    '<div>🎁 <b>Goodies:</b> Alle 5 Einträge gibt es ein Goodie vom anderen. Die Punkte oben in jeder Spalte zeigen, wie weit ihr seid.</div>' +
+    '<div style="margin-top:6px">✅ <b>Einlösen:</b> Nur wer das Goodie bekommt, hakt es ab. Das „Wir“-Goodie zählt erst, wenn ihr beide bestätigt habt.</div>' +
+    '<div style="margin-top:6px">🔥 <b>Flamme:</b> Mindestens 2× Sport pro Woche, allein oder gemeinsam. Die „Wir“-Flamme gibt es, wenn ihr beide es geschafft habt.</div>' +
+    '<div style="margin-top:6px">📝 <b>Bearbeiten:</b> Goodies festlegen (auch mehrere hintereinander) und Einträge löschen.</div>' +
+    '<button class="chip" style="margin-top:10px" data-a="spHelp">Schließen</button></div>';
   h += '<button class="btn" data-a="addSport">+ Training eintragen</button>';
-  if (edit) h += '<div class="card stack"><div style="font-size:15px;font-weight:700">Goodies benennen</div>' + cols.map(c => '<label class="field" style="color:' + c[2] + '">Goodie für ' + (c[0] === 'b' ? 'uns beide' : c[1]) + '<input data-goodie="' + c[0] + '" maxlength="40" value="' + esc(names[c[0]] === 'Goodie' ? '' : names[c[0]]) + '" placeholder="Kochen für dich"></label>').join('') + '<div class="small muted">Einträge löschen: auf das × neben dem Eintrag tippen.</div></div>';
+  if (edit) h += '<div class="card stack"><div style="font-size:15px;font-weight:700">Goodies benennen</div>' + '<div class="small muted">Eine Zeile pro Goodie, in der Reihenfolge, in der sie kommen sollen. Nach dem letzten geht es wieder von vorne los.</div>' + cols.map(c => { const l = gl(c[0]).filter(x => x !== 'Goodie'); return '<label class="field" style="color:' + c[2] + '">Goodies für ' + (c[0] === 'b' ? 'uns beide' : c[1]) + '<textarea data-goodies="' + c[0] + '" rows="3" style="min-height:84px" placeholder="Kochen für dich&#10;Massage&#10;Kino">' + esc(l.join('\n')) + '</textarea></label>'; }).join('') + '<div class="small muted">Einträge löschen: auf das × neben dem Eintrag tippen.</div></div>';
   h += '<div class="sheetp">' + cols.map(([k, n, c]) => {
     const g = gs[k], list = entries.filter(e => e.col === k).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0), N = list.length;
     let goodie;
@@ -535,8 +583,8 @@ function viewSport() {
       let label, active;
       if (k === 'b') { const mineC = conf[S.who], otherC = conf[other()]; label = mineC ? 'warte auf ' + them() : otherC ? them() + ' hat bestätigt' : 'eingelöst? bestätigen'; active = !mineC; }
       else { active = k === S.who; label = active ? 'erhalten? abhaken' : 'du schuldest ' + NAME[k]; }
-      goodie = '<button class="gbtn" data-a="redeem" data-v="' + k + '" style="' + (active ? 'border:none;background:' + c + ';color:#fff' : 'border:1.5px dashed ' + c + ';background:transparent;color:' + c) + '"><span style="display:block;font-size:10px;font-weight:700;line-height:1.25;opacity:.9">' + label + '</span><span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;font-weight:800;line-height:1.3;margin-top:2px;overflow-wrap:anywhere">' + esc(names[k]) + (g.open > 1 ? ' (' + g.open + '×)' : '') + '</span></button>';
-    } else goodie = '<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:2px;padding:0 4px;text-align:center;color:' + c + '"><span style="font-size:11px;font-weight:700;line-height:1.3">Goodie in ' + g.until + '× Training</span><span style="font-family:Caveat,cursive;font-size:17px;font-weight:700;line-height:1.15;padding:0 4px 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%;box-sizing:border-box;hyphens:auto">' + esc(names[k]) + '</span></div>';
+      goodie = '<div style="display:flex;flex-direction:column;align-items:stretch;width:100%"><button class="gbtn" data-a="redeem" data-v="' + k + '" style="' + (active ? 'border:none;background:' + c + ';color:#fff' : 'border:1.5px dashed ' + c + ';background:transparent;color:' + c) + '"><span style="display:block;font-size:10px;font-weight:700;line-height:1.25;opacity:.9">' + label + '</span><span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;font-weight:800;line-height:1.3;margin-top:2px;overflow-wrap:anywhere">' + esc(gName(k, red[k] || 0)) + (g.open > 1 ? ' (+' + (g.open - 1) + ')' : '') + '</span></button>' + '<div style="font-size:10px;font-weight:700;text-align:center;margin-top:4px;color:' + c + '">danach: ' + esc(gName(k, g.earned)) + '</div></div>';
+    } else goodie = '<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:2px;padding:0 4px;text-align:center;color:' + c + '"><span style="font-size:11px;font-weight:700;line-height:1.3">Goodie in ' + g.until + '× Training</span><span style="font-family:Caveat,cursive;font-size:17px;font-weight:700;line-height:1.15;padding:0 4px 2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%;box-sizing:border-box;hyphens:auto">' + esc(gName(k, g.earned)) + '</span></div>';
     const sk = streak[k];
     return '<div class="spcol"><div class="sphead"><div class="fell" style="font-size:19px;color:' + c + '">' + n + '</div><div style="display:flex;gap:4px">' + [0, 1, 2, 3, 4].map(i => '<span style="width:9px;height:9px;border-radius:5px;border:1.5px solid ' + c + ';background:' + (i < g.prog ? c : 'transparent') + '"></span>').join('') + '</div></div>' +
       '<div class="spgoodie">' + goodie + '</div><div class="spstreak" style="color:' + (sk ? '#C9661A' : '#9A8F87') + '">' + ICON.flame(sk ? '#F5B83D' : 'none') + (sk ? sk + (sk === 1 ? ' Woche' : ' Wochen') : 'noch kein Streak') + '</div>' +
@@ -665,6 +713,7 @@ const ACT = {
         d.paidBy = f.paidBy || S.who; return x ? store.update('expenses', x.id, d) : store.add('expenses', d); },
       x ? () => store.remove(kind === 'priv' ? 'pexpenses' : 'expenses', x.id, { priv: kind === 'priv' }) : null);
   },
+  spHelp() { S.ui.spHelp = !S.ui.spHelp; render(); },
   spEdit() { set('spEdit', !S.ui.spEdit); },
   addSport() {
     const places = Array.from(new Set(S.d.sport.slice().sort((a, b) => a.date < b.date ? 1 : -1).map(e => e.place))).slice(0, 6);
@@ -737,7 +786,7 @@ function eventSheet(x, date) {
     fSel('evkind', 'Art', bd ? 'bday' : 'ev', [['ev', 'Termin'], ['bday', 'Geburtstag 🎂 (jedes Jahr, gelb)']]) +
     fText('title', '<span class="ev-l">' + (bd ? 'Wessen Geburtstag?' : 'Was?') + '</span>', x && x.title, bd ? 'Oma Ingrid' : 'Zahnarzt', 'required') +
     fDate('date', '<span class="ev-d">' + (bd ? 'Geburtsdatum (mit Jahr, dann steht das Alter dabei)' : 'Datum') + '</span>', x ? x.date : date, 'required') +
-    '<div class="ev-only stack" style="gap:14px' + (bd ? ';display:none' : '') + '"><label class="field">Uhrzeit (optional)<input type="time" name="time" value="' + esc(x ? x.time || '' : '') + '"></label>' +
+    '<div class="ev-only stack" style="gap:14px' + (bd ? ';display:none' : '') + '">' + fDate('end', 'Bis (optional, für mehrere Tage)', x && x.end) + '<label class="field">Uhrzeit (optional)<input type="time" name="time" value="' + esc(x ? x.time || '' : '') + '"></label>' +
     fSel('rep', 'Wiederholen', r, [['', 'Nicht wiederholen'], ['w1', 'Jede Woche'], ['w2', 'Alle 2 Wochen'], ['m', 'Jeden Monat am ' + d0.getDate() + '.'], ['nth', nthTxt(d0)], ['y', 'Jedes Jahr'], ['c', 'Individuell …']]) +
     customRepHTML(x, d0) +
     '<div class="ev-until"' + (r ? '' : ' style="display:none"') + '>' + fDate('until', 'Wiederholen bis (optional)', x && x.until) + '</div></div>' +
@@ -746,6 +795,7 @@ function eventSheet(x, date) {
       if (!f.title.trim()) return false;
       const isB = f.evkind === 'bday';
       const d = { title: f.title.trim(), date: f.date, who: isB && f.who !== 'b' ? S.who : f.who, bday: isB, time: isB ? '' : (f.time || ''), rep: isB ? 'y' : (f.rep || ''), until: isB || !f.rep ? '' : (f.until || '') };
+      d.end = (!isB && f.end && f.end > f.date) ? f.end : '';
       if (d.rep === 'c') { d.every = Math.max(1, Math.min(99, parseInt(f.every, 10) || 1)); d.unit = f.unit || 'w'; d.mmode = f.mmode || 'date'; d.wdays = Array.from(document.querySelectorAll('#sheetForm [name=wd]:checked')).map(c => Number(c.value)); if (d.unit === 'w' && !d.wdays.length) d.wdays = [L.parseISO(f.date).getDay()]; }
       return x ? store.update('events', x.id, d) : store.add('events', Object.assign(d, { by: S.who }));
     },
@@ -800,6 +850,7 @@ document.addEventListener('change', (e) => {
   const el = e.target;
   if (el.form && el.form.id === 'sheetForm' && el.form.elements.evkind) eventSheetSync(el.form, el);
   if (el.dataset && el.dataset.setting) store.setDoc('settings', { [el.dataset.setting]: el.value });
+  if (el.dataset && el.dataset.goodies) { const all = Object.assign({}, S.settings.goodieList || {}); all[el.dataset.goodies] = el.value.split('\n').map(x => x.trim().slice(0, 40)).filter(Boolean); store.setDoc('settings', { goodieList: all }); }
   if (el.dataset && el.dataset.goodie) { const n = Object.assign({}, S.settings.goodieNames || {}); n[el.dataset.goodie] = el.value.trim() || 'Goodie'; store.setDoc('settings', { goodieNames: n }); }
 });
 
