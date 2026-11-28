@@ -40,7 +40,7 @@ const NAV = [
 let store;
 const S = {
   who: null, tab: 'start', sub: null, ready: false,
-  d: { events: [], todos: [], shop: [], expenses: [], fixed: [], sport: [], recipes: [], dates: [], trips: [], messages: [], reminders: [], photos: [], diary: [], notes: [], wishes: [], pexpenses: [] },
+  d: { events: [], todos: [], shop: [], expenses: [], fixed: [], sport: [], recipes: [], dates: [], trips: [], messages: [], reminders: [], photos: [], goals: [], diary: [], notes: [], wishes: [], pexpenses: [] },
   settings: {}, photo: null,
   ui: { calView: 'month', calOff: 0, filter: 'all', listTab: 'todo', mOff: 0, spEdit: false, doorOpen: false, msgOpen: false, recipe: null, dateIdea: null, trip: null },
   topImg: TOPS[Math.floor(Math.random() * TOPS.length)]
@@ -67,7 +67,7 @@ function startSession(who) {
   applyAccent();
   if (!S.ready) {
     S.ready = true;
-    ['events', 'todos', 'shop', 'expenses', 'fixed', 'sport', 'recipes', 'dates', 'trips', 'messages', 'reminders', 'photos'].forEach(n => store.watch(n, (arr) => { S.d[n] = arr; render(); }));
+    ['events', 'todos', 'shop', 'expenses', 'fixed', 'sport', 'recipes', 'dates', 'trips', 'messages', 'reminders', 'photos', 'goals'].forEach(n => store.watch(n, (arr) => { S.d[n] = arr; render(); }));
     ['diary', 'notes', 'wishes', 'pexpenses'].forEach(n => store.watch(n, (arr) => { S.d[n] = arr; render(); }, { priv: true }));
     store.watchDoc('settings', (doc) => { S.settings = doc || {}; render(); startFx(); });
     store.watchDoc('photo', (doc) => { S.photo = doc; render(); });
@@ -244,14 +244,12 @@ function viewStart() {
   }
   h += viewBoard();
   // Countdowns
-  const trip = nextTrip(), ann = L.nextOccurrence(S.settings.together, d);
+  const trip = nextTrip();
   h += '<div class="grid2"><button class="cd" data-a="sub" data-v="trips"><span class="small muted">Nächster Urlaub</span>' +
     (trip ? '<span class="big">' + L.dayDiff(d, L.parseISO(trip.start)) + ' Tage</span><span class="t15" style="font-weight:700">' + esc(trip.name) + '</span>' : '<span class="big">–</span><span class="t15" style="font-weight:700">Noch nichts geplant</span>') +
     '<span style="font-size:12px" class="muted">' + (trip ? 'Infos ansehen ›' : 'Urlaub anlegen ›') + '</span></button>' +
-    '<button class="cd" data-a="sub" data-v="remind"><span class="small muted">Jahrestag</span>' +
-    (ann ? '<span class="big">' + L.dayDiff(d, ann) + ' Tage</span><span class="t15" style="font-weight:700">' + ann.getDate() + '. ' + L.MON[ann.getMonth()] + '</span><span style="font-size:12px" class="muted">' + (ann.getFullYear() - L.parseISO(S.settings.together).getFullYear()) + ' Jahre Tandem</span>'
-      : '<span class="big">–</span><span class="t15" style="font-weight:700">Datum fehlt</span><span style="font-size:12px" class="muted">Unter Erinnerungen eintragen</span>') + '</button></div>';
-  h += '<div class="grid4">' + [['cook', 'tile-koch', 'Kochbuch'], ['dates', 'tile-date', 'Date-Ideen'], ['notes', 'tile-notiz', 'Notizen'], ['remind', 'tile-erinn', 'Erinnerungen']]
+    goalTile() + '</div>';
+  h += '<div class="grid4">' + [['cook', 'tile-koch', 'Kochbuch'], ['dates', 'tile-date', 'Date-Ideen'], ['notes', 'tile-notiz', 'Notizen'], ['remind', 'tile-erinn', 'Countdowns']]
     .map(t => '<button class="tile" data-a="sub" data-v="' + t[0] + '"><img src="' + A(t[1] + '.jpg') + '" alt="">' + t[2] + '</button>').join('') + '</div>';
   // Als Nächstes
   const nx = nextUp();
@@ -308,6 +306,67 @@ async function cleanupMessages() {
   for (const m of S.d.messages) if (m.from === S.who && m.forDate < t) { try { await store.remove('messages', m.id); } catch (e) {} }
 }
 
+
+// ---------------------------------------------------------------- Ziele
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.classList.add('show'), 20); setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 2600); }
+const goalPct = (g) => Math.max(0, Math.min(100, Math.round(100 * (Number(g.current) || 0) / Math.max(1, Number(g.target) || 1))));
+const fmtN = (v) => (Number(v) || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
+function goalTile() {
+  const open = S.d.goals.filter(g => goalPct(g) < 100).sort((a, b) => goalPct(b) - goalPct(a)), g = open[0];
+  return '<button class="cd" data-a="sub" data-v="goals"><span class="small muted">Unsere Ziele</span>' +
+    (g ? '<span class="t15" style="font-weight:800;margin-top:4px;line-height:1.25">' + esc(g.title) + '</span><span class="gbar" style="margin:8px 0 4px"><i style="width:' + goalPct(g) + '%"></i></span><span style="font-size:12px" class="muted">' + fmtN(g.current) + ' von ' + fmtN(g.target) + ' ' + esc(g.unit || '') + (open.length > 1 ? ' · +' + (open.length - 1) + ' weitere' : '') + '</span>'
+      : '<span class="big">🎯</span><span class="t15" style="font-weight:700">' + (S.d.goals.length ? 'Alles geschafft!' : 'Noch keine Ziele') + '</span><span style="font-size:12px" class="muted">Ziel anlegen ›</span>') + '</button>';
+}
+function viewGoals() {
+  const gs = S.d.goals.slice().sort((a, b) => (goalPct(a) === 100) - (goalPct(b) === 100) || (a.at || 0) - (b.at || 0));
+  let h = '<div class="h1">Unsere Ziele</div><div class="small muted">Was ihr gemeinsam schaffen wollt</div>';
+  h += gs.length ? gs.map(g => { const pc = goalPct(g), done = pc >= 100, step = Number(g.step) || 1;
+    return '<div class="card" style="' + (done ? 'background:#EEF5EF;border-color:#BFD9C6' : '') + '"><button style="width:100%;background:none;border:none;padding:0;text-align:left" data-a="editGoal" data-id="' + g.id + '"><div class="row" style="justify-content:space-between;gap:10px"><span style="font-size:17px;font-weight:800">' + (done ? '🏆 ' : '') + esc(g.title) + '</span><span style="font-size:15px;font-weight:800;color:var(--acc-txt)">' + pc + ' %</span></div>' +
+      (g.note ? '<div class="small muted" style="margin-top:2px">' + esc(g.note) + '</div>' : '') +
+      '<span class="gbar" style="margin:10px 0 6px"><i style="width:' + pc + '%' + (done ? ';background:#2E5E45' : '') + '"></i></span><div class="small muted">' + fmtN(g.current) + ' von ' + fmtN(g.target) + ' ' + esc(g.unit || '') + (g.until ? ' · bis ' + L.fmtShort(L.parseISO(g.until)) : '') + '</div></button>' +
+      (done ? '' : '<div class="row" style="gap:8px;margin-top:10px"><button class="chip" data-a="goalStep" data-id="' + g.id + '" data-v="-1">− ' + fmtN(step) + '</button><button class="btn small" style="flex:1" data-a="goalStep" data-id="' + g.id + '" data-v="1">+ ' + fmtN(step) + ((g.unit || '').length <= 3 ? ' ' + esc(g.unit || '') : '') + '</button></div>') + '</div>'; }).join('')
+    : '<div class="empty">Noch keine Ziele. Zum Beispiel „10 neue Restaurants testen“ oder „1.500 € für den Urlaub sparen“.</div>';
+  return h + '<button class="btn-add" data-a="editGoal">+ Ziel</button>';
+}
+
+// ---------------------------------------------------------------- Einkauf: Gänge
+const AISLES = [
+  ['obst', '🥦 Obst & Gemüse', 'apfel äpfel banane birne orange zitrone limette beere erdbeer himbeer heidelbeer traube kiwi mango ananas melone avocado tomate gurke paprika salat rucola spinat karotte möhre zwiebel knoblauch kartoffel süßkartoffel zucchini aubergine brokkoli blumenkohl kohl lauch porree pilz champignon ingwer kräuter petersilie basilikum koriander schnittlauch minze mais radieschen sellerie fenchel kürbis obst gemüse frühlingszwiebel lauchzwiebel chili'],
+  ['brot', '🥖 Brot & Backwaren', 'brot brötchen toast baguette croissant brezel laugen wrap tortilla knäcke kuchen fladenbrot ciabatta'],
+  ['kuehl', '🧀 Kühlregal', 'milch käse joghurt quark butter sahne schmand frischkäse mozzarella feta parmesan gouda halloumi ei eier wurst schinken salami aufschnitt tofu hummus pesto skyr margarine creme crème mascarpone ricotta kefir hafermilch sojamilch'],
+  ['fleisch', '🥩 Fleisch & Fisch', 'fleisch hähnchen hühnchen huhn pute rind hack hackfleisch schwein steak schnitzel lachs fisch thunfisch garnele shrimp bacon speck würstchen bratwurst chorizo'],
+  ['tk', '❄️ Tiefkühl', 'tk tiefkühl pizza eis pommes erbsen spinat-tk gefroren frozen'],
+  ['vorrat', '🥫 Vorrat & Gewürze', 'nudeln pasta spaghetti penne reis mehl zucker salz pfeffer öl olivenöl essig gewürz paprikapulver curry dose konserve passata tomatenmark brühe linsen bohnen kichererbsen haferflocken müsli cornflakes honig marmelade nutella senf ketchup mayo sojasoße sojasauce backpulver hefe vanille kokosmilch nüsse mandeln couscous bulgur quinoa tee kaffee'],
+  ['snacks', '🍫 Süßes & Snacks', 'schokolade chips kekse gummibärchen süßigkeit snack popcorn riegel cracker salzstangen'],
+  ['getraenke', '🥤 Getränke', 'wasser saft cola limo bier wein sekt sprudel mate eistee getränk'],
+  ['drogerie', '🧴 Drogerie & Haushalt', 'shampoo duschgel seife zahnpasta zahnbürste deo klopapier toilettenpapier küchenrolle taschentuch spülmittel waschmittel müllbeutel schwamm creme tampon binde rasier watte pflaster putzmittel reiniger alufolie frischhaltefolie backpapier batterie'],
+  ['sonst', '🛒 Sonstiges', '']
+];
+const aisleName = (k) => (AISLES.find(a => a[0] === k) || AISLES[AISLES.length - 1])[1];
+function guessAisle(title) {
+  const t = (title || '').toLowerCase().replace(/^[\d.,\s]*(g|kg|ml|l|stk|stück|pck|packung|bund|dose|el|tl|prise)?\.?\s+/i, '').trim();
+  const learned = (S.settings.shopCats || {})[t]; if (learned) return learned;
+  for (const a of AISLES) { if (!a[2]) continue; for (const w of a[2].split(' ')) if (w && (t === w || t.includes(w))) return a[0]; }
+  return 'sonst';
+}
+const shopKey = (title) => (title || '').toLowerCase().replace(/^[\d.,\s]*(g|kg|ml|l|stk|stück|pck|packung|bund|dose|el|tl|prise)?\.?\s+/i, '').trim();
+
+// ---------------------------------------------------------------- Date-Glücksrad
+const WHEEL_COL = ['#C4243B', '#F2B8C2', '#2A2422', '#E2B53A', '#2E5E45', '#E8687A', '#3C5577', '#FBF7F1'];
+function wheelSVG(ds) {
+  const n = ds.length, R = 140, cx = 150, cy = 150, a = 2 * Math.PI / n;
+  let g = '';
+  ds.forEach((x, i) => {
+    const a0 = i * a - Math.PI / 2, a1 = a0 + a, col = WHEEL_COL[(i % (WHEEL_COL.length - (n % WHEEL_COL.length === 1 ? 1 : 0)))];
+    const p = (an) => (cx + R * Math.cos(an)).toFixed(2) + ' ' + (cy + R * Math.sin(an)).toFixed(2);
+    g += n === 1 ? '<circle cx="150" cy="150" r="140" fill="' + col + '"/>' : '<path d="M150 150 L' + p(a0) + ' A' + R + ' ' + R + ' 0 ' + (a > Math.PI ? 1 : 0) + ' 1 ' + p(a1) + ' Z" fill="' + col + '" stroke="#fff" stroke-width="2"/>';
+    const am = (a0 + a / 2) * 180 / Math.PI, light = ['#F2B8C2', '#E2B53A', '#FBF7F1'].includes(col), lab = x.title.length > 16 ? x.title.slice(0, 15) + '…' : x.title;
+    const flip = ((am % 360) + 360) % 360 > 90 && ((am % 360) + 360) % 360 < 270;
+    g += '<text x="' + (flip ? cx - 34 : cx + 34) + '" y="' + cy + '" text-anchor="' + (flip ? 'end' : 'start') + '" transform="rotate(' + (flip ? am + 180 : am).toFixed(2) + ' 150 150)" dominant-baseline="middle" font-size="' + (n > 10 ? 11 : 13) + '" font-weight="700" fill="' + (light ? '#2A2422' : '#fff') + '" font-family="Inter,system-ui,sans-serif">' + esc(lab) + '</text>';
+  });
+  return '<svg viewBox="0 0 300 300" width="100%" style="display:block">' + g + '<circle cx="150" cy="150" r="22" fill="#fff" stroke="#DCCFBF" stroke-width="2"/><text x="150" y="151" text-anchor="middle" dominant-baseline="middle" font-size="16">❤️</text></svg>';
+}
+
 // ---------------------------------------------------------------- Unterseiten
 function viewSub() {
   const back = '<button class="back" data-a="sub" data-v="">‹ Start</button>';
@@ -317,6 +376,7 @@ function viewSub() {
   if (s === 'notes') return '<div class="stack">' + back + viewNotes() + '</div>';
   if (s === 'remind') return '<div class="stack">' + back + viewRemind() + '</div>';
   if (s === 'trips') return '<div class="stack">' + back + viewTrips() + '</div>';
+  if (s === 'goals') return '<div class="stack">' + back + viewGoals() + '</div>';
   return viewStart();
 }
 
@@ -326,17 +386,19 @@ function viewCook() {
   let h = '<div class="h1">Kochbuch</div>';
   if (rs.length) h += '<button class="btn" data-a="randRecipe">Zufälliges Gericht</button>';
   if (pick) h += '<div style="background:var(--acc-soft);border:2px solid var(--acc);border-radius:18px;padding:16px"><div class="kicker" style="color:var(--ink)">Heute gibt es</div><div style="font-size:22px;font-weight:800;margin-top:4px">' + esc(pick.title) + '</div><div style="font-size:14px;margin-top:2px">' + esc(pick.info || '') + '</div>' +
-    ((pick.ingredients || '').trim() ? '<button class="btn small" style="margin-top:12px" data-a="toShop" data-id="' + pick.id + '">Zutaten auf die Einkaufsliste</button>' : '') + '</div>';
-  h += rs.length ? rs.map(r => '<button class="card" style="width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center" data-a="editRecipe" data-id="' + r.id + '"><span><span style="display:block;font-size:16px;font-weight:700">' + esc(r.title) + '</span><span class="small muted">' + esc(r.info || '') + '</span></span><span class="small muted">' + esc(NAME[r.by] || '') + '</span></button>').join('')
+    ((pick.ingredients || '').trim() ? '<button class="btn small" style="margin-top:12px" data-a="toShop" data-id="' + pick.id + '">🛒 Zutaten auswählen</button>' : '') + '</div>';
+  h += rs.length ? rs.map(r => '<button class="card" style="width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center" data-a="editRecipe" data-id="' + r.id + '"><span><span style="display:block;font-size:16px;font-weight:700">' + esc(r.title) + '</span><span class="small muted">' + esc(r.info || '') + '</span></span><span class="small muted">' + esc(NAME[r.by] || '') + '</span></button>' + ((r.ingredients || '').trim() ? '<button class="chip" style="align-self:flex-start;margin-top:-6px" data-a="toShop" data-id="' + r.id + '">🛒 Zutaten auf die Einkaufsliste</button>' : '')).join('')
     : '<div class="empty">Noch keine Rezepte. Legt euer erstes an!</div>';
   return h + '<button class="btn-add" data-a="editRecipe">+ Rezept</button>';
 }
 function viewDates() {
   const ds = S.d.dates, pick = ds.find(x => x.id === S.ui.dateIdea);
   let h = '<div class="h1">Date-Ideen</div>';
-  if (ds.length) h += '<button class="btn" data-a="randDate">Überrasch uns</button>';
-  if (pick) h += '<div style="background:var(--acc-soft);border:2px solid var(--acc);border-radius:18px;padding:16px"><div class="kicker" style="color:var(--ink)">Wie wär\'s mit</div><div style="font-size:22px;font-weight:800;margin-top:4px">' + esc(pick.title) + '</div><div style="font-size:14px;margin-top:2px">' + esc(pick.desc || '') + '</div></div>';
-  h += ds.length ? ds.map(x => '<button class="card" style="width:100%;text-align:left" data-a="editDate" data-id="' + x.id + '"><span style="display:block;font-size:16px;font-weight:700">' + esc(x.title) + '</span><span class="small muted">' + esc(x.desc || '') + '</span></button>').join('') : '<div class="empty">Noch keine Ideen gesammelt.</div>';
+  const wds = ds.filter(x => !x.done).slice(0, 16);
+  if (wds.length >= 2) h += '<div class="card" style="padding:16px"><div class="wheelwrap"><div class="wptr"></div><div id="wheel" style="transform:rotate(' + (S.ui.wheelRot || 0) + 'deg)">' + wheelSVG(wds) + '</div></div><button class="btn" style="margin-top:14px" data-a="spinWheel">Rad drehen</button></div>';
+  else if (ds.length) h += '<button class="btn" data-a="randDate">Überrasch uns</button>';
+  if (pick) h += '<div style="background:var(--acc-soft);border:2px solid var(--acc);border-radius:18px;padding:16px"><div class="kicker" style="color:var(--ink)">Wie wär\'s mit</div><div style="font-size:22px;font-weight:800;margin-top:4px">' + esc(pick.title) + '</div><div style="font-size:14px;margin-top:2px">' + esc(pick.desc || '') + '</div><button class="btn small" style="margin-top:12px" data-a="dateDone" data-id="' + pick.id + '">Haben wir gemacht ✓</button></div>';
+  h += ds.length ? ds.slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0)).map(x => '<button class="card" style="width:100%;text-align:left" data-a="editDate" data-id="' + x.id + '"' + (x.done ? ' style="opacity:.6"' : '') + '><span style="display:block;font-size:16px;font-weight:700">' + (x.done ? '✓ ' : '') + esc(x.title) + '</span><span class="small muted">' + esc(x.desc || '') + '</span></button>').join('') : '<div class="empty">Noch keine Ideen gesammelt.</div>';
   return h + '<button class="btn-add" data-a="editDate">+ Idee</button>';
 }
 function viewNotes() {
@@ -355,9 +417,9 @@ function viewRemind() {
   if (st.bdayP) items.push({ t: 'Geburtstag Lena', d: L.nextOccurrence(st.bdayP, d) });
   S.d.reminders.forEach(r => { const x = L.parseISO(r.date); if (x && L.dayDiff(d, x) >= 0) items.push({ t: r.title, d: x, id: r.id }); });
   items.sort((a, b) => a.d - b.d);
-  let h = '<div class="h1">Erinnerungen</div><div class="small muted">Besondere Tage mit Countdown</div>';
-  h += items.length ? items.map(i => '<button class="card row" style="width:100%;text-align:left;gap:14px" ' + (i.id ? 'data-a="editReminder" data-id="' + i.id + '"' : i.sub ? 'data-a="sub" data-v="' + i.sub + '"' : 'data-a="noop"') + '><span style="width:58px;height:58px;flex:none;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--acc);color:var(--acc-on)"><span style="font-size:22px;font-weight:800;line-height:1">' + L.dayDiff(d, i.d) + '</span><span style="font-size:11px;font-weight:700">Tage</span></span><span style="flex:1"><span style="display:block;font-size:16px;font-weight:700">' + esc(i.t) + '</span><span class="small muted">' + i.d.getDate() + '. ' + L.MON[i.d.getMonth()] + ' ' + i.d.getFullYear() + (i.note ? ' · ' + i.note : '') + '</span></span></button>').join('') : '<div class="empty">Noch keine Erinnerungen.</div>';
-  h += '<button class="btn-add" data-a="editReminder">+ Erinnerung mit Countdown</button>';
+  let h = '<div class="h1">Countdowns</div><div class="small muted">Besondere Tage, auf die ihr hinfiebert</div>';
+  h += items.length ? items.map(i => '<button class="card row" style="width:100%;text-align:left;gap:14px" ' + (i.id ? 'data-a="editReminder" data-id="' + i.id + '"' : i.sub ? 'data-a="sub" data-v="' + i.sub + '"' : 'data-a="noop"') + '><span style="width:58px;height:58px;flex:none;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--acc);color:var(--acc-on)"><span style="font-size:22px;font-weight:800;line-height:1">' + L.dayDiff(d, i.d) + '</span><span style="font-size:11px;font-weight:700">Tage</span></span><span style="flex:1"><span style="display:block;font-size:16px;font-weight:700">' + esc(i.t) + '</span><span class="small muted">' + i.d.getDate() + '. ' + L.MON[i.d.getMonth()] + ' ' + i.d.getFullYear() + (i.note ? ' · ' + i.note : '') + '</span></span></button>').join('') : '<div class="empty">Noch keine Countdowns.</div>';
+  h += '<button class="btn-add" data-a="editReminder">+ Countdown</button>';
   h += '<div style="font-size:18px;font-weight:800;margin-top:22px">Besondere Tage</div><div class="small muted">Könnt ihr jederzeit ändern</div><div class="card">' +
     [['together', 'Zusammen seit'], ['bdayF', 'Geburtstag Fabian'], ['bdayP', 'Geburtstag Lena']].map(([k, l]) => '<label class="row" style="justify-content:space-between;padding:8px 0;font-size:15px;font-weight:600">' + l + '<input type="date" data-setting="' + k + '" value="' + esc(st[k] || '') + '" style="font-size:16px;border:1px solid #DCCFBF;border-radius:10px;padding:8px 10px;min-height:40px;background:#FBF7F1"></label>').join('') + '</div>';
   h += '<div style="font-size:18px;font-weight:800;margin-top:22px">Zum Testen</div><div class="card stack"><div class="small muted">Tut so, als wäre heute ein anderer Tag – nur auf diesem Gerät. Praktisch, um Advent, Ostern oder Geburtstage vorab anzuschauen.</div>' +
@@ -533,7 +595,12 @@ function viewList() {
     if (todos.some(x => x.done)) h += '<button class="chip" data-a="clearTodos">Erledigte entfernen</button>';
   } else {
     const items = S.d.shop.slice().sort((a, b) => (a.done - b.done) || ((a.at || 0) - (b.at || 0)));
-    h += '<div class="notepad"><div class="ttl">Einkaufszettel</div>' + items.map(x => '<button class="item" data-a="shopToggle" data-id="' + x.id + '"><span class="pbox" style="color:#3C5577">' + (x.done ? ICON.check : '') + '</span><span class="ptext ' + (x.done ? 'done' : '') + '">' + esc(x.title) + '</span><span style="width:8px;height:8px;border-radius:4px;background:' + (COL[x.who] || COL.b) + '"></span></button>').join('') +
+    const row = (x) => '<div class="item"><button class="pbtn" data-a="shopToggle" data-id="' + x.id + '"><span class="pbox" style="color:#3C5577">' + (x.done ? ICON.check : '') + '</span><span class="ptext ' + (x.done ? 'done' : '') + '">' + esc(x.title) + '</span></button><button class="pcat" data-a="shopCat" data-id="' + x.id + '" aria-label="Gang ändern">' + aisleName(x.cat || guessAisle(x.title)).split(' ')[0] + '</button><span style="width:8px;height:8px;flex:none;border-radius:4px;background:' + (COL[x.who] || COL.b) + '"></span></div>';
+    const open = items.filter(x => !x.done), done = items.filter(x => x.done);
+    let body = '';
+    AISLES.forEach(a => { const its = open.filter(x => (x.cat || guessAisle(x.title)) === a[0]); if (its.length) body += '<div class="aisle">' + a[1].replace(/^\S+ /, '') + '</div>' + its.map(row).join(''); });
+    if (done.length) body += '<div class="aisle">Erledigt</div>' + done.map(row).join('');
+    h += '<div class="notepad"><div class="ttl">Einkaufszettel</div>' + body +
       '<form class="padd" data-form="shopAdd"><input name="t" data-keep="shop" placeholder="+ aufschreiben …" enterkeyhint="done" autocomplete="off"><button class="chip" type="submit">+</button></form></div>';
     if (items.some(x => x.done)) h += '<button class="chip" data-a="clearShop">Erledigte entfernen</button>';
   }
@@ -735,8 +802,43 @@ const ACT = {
   toShop(id) {
     const r = S.d.recipes.find(x => x.id === id); if (!r) return;
     const lines = (r.ingredients || '').split('\n').map(x => x.trim()).filter(Boolean);
-    lines.forEach((l, i) => store.add('shop', { title: l, who: S.who, done: false, at: Date.now() + i }));
-    alert(lines.length + ' Zutaten stehen jetzt auf dem Einkaufszettel.');
+    const have = new Set(S.d.shop.filter(x => !x.done).map(x => shopKey(x.title)));
+    openSheet('Zutaten für ' + r.title, '<div class="small muted">Hak an, was auf den Einkaufszettel soll. Was schon draufsteht, ist ausgegraut.</div><div class="stack" style="gap:2px">' +
+      lines.map((l, i) => { const dup = have.has(shopKey(l)); return '<label class="ingr' + (dup ? ' dup' : '') + '"><input type="checkbox" name="ing' + i + '" value="' + esc(l) + '"' + (dup ? '' : ' checked') + '><span>' + esc(l) + (dup ? ' <em>(steht schon drauf)</em>' : '') + '</span></label>'; }).join('') + '</div>',
+      (f) => { const pick = Object.keys(f).filter(k => k.startsWith('ing')).map(k => f[k]); pick.forEach((l, i) => store.add('shop', { title: l, who: S.who, done: false, at: Date.now() + i, cat: guessAisle(l) })); if (pick.length) toast(pick.length + (pick.length === 1 ? ' Zutat' : ' Zutaten') + ' auf dem Einkaufszettel'); });
+  },
+  shopCat(id) {
+    const x = S.d.shop.find(t => t.id === id); if (!x) return;
+    openSheet('In welchen Gang?', '<div class="small muted">' + esc(x.title) + ' – merkt sich Tandem fürs nächste Mal.</div><div class="stack" style="gap:6px">' + AISLES.map(a => '<label class="ingr"><input type="radio" name="cat" value="' + a[0] + '"' + ((x.cat || guessAisle(x.title)) === a[0] ? ' checked' : '') + '><span>' + a[1] + '</span></label>').join('') + '</div>',
+      (f) => { if (!f.cat) return false; store.update('shop', id, { cat: f.cat }); const m = Object.assign({}, S.settings.shopCats || {}); m[shopKey(x.title)] = f.cat; store.setDoc('settings', { shopCats: m }); },
+      () => store.remove('shop', id));
+  },
+  spinWheel() {
+    const wds = S.d.dates.filter(x => !x.done).slice(0, 16), n = wds.length; if (n < 2 || S.ui.spinning) return;
+    const i = Math.floor(Math.random() * n), seg = 360 / n;
+    // Segment i liegt (von oben im Uhrzeigersinn) bei i*seg … (i+1)*seg; Mitte nach oben drehen
+    const target = 360 - (i * seg + seg / 2) + (Math.random() - 0.5) * seg * 0.6;
+    const cur = S.ui.wheelRot || 0, base = cur - (cur % 360);
+    const rot = base + 360 * 5 + target;
+    S.ui.wheelRot = rot; S.ui.spinning = true; S.ui.dateIdea = null;
+    const w = $('#wheel'); if (w) { w.style.transition = 'transform 4.2s cubic-bezier(.17,.67,.21,1)'; w.style.transform = 'rotate(' + rot + 'deg)'; }
+    setTimeout(() => { S.ui.spinning = false; set('dateIdea', wds[i].id); }, 4400);
+  },
+  dateDone(id) { store.update('dates', id, { done: true, doneAt: tISO() }); set('dateIdea', null); },
+  goalStep(_, el) {
+    const id = el.dataset.id, g = S.d.goals.find(x => x.id === id); if (!g) return;
+    const dir = Number(el.dataset.v) || 1, step = Number(g.step) || 1, v = Math.max(0, Math.round(((Number(g.current) || 0) + dir * step) * 100) / 100);
+    store.update('goals', id, { current: v });
+    if (dir > 0 && v >= (Number(g.target) || 0) && (Number(g.current) || 0) < (Number(g.target) || 0)) toast('🏆 Ziel geschafft: ' + g.title);
+  },
+  editGoal(id) {
+    const x = id ? S.d.goals.find(t => t.id === id) : null;
+    openSheet(x ? 'Ziel bearbeiten' : 'Neues Ziel', fText('title', 'Was wollt ihr schaffen?', x && x.title, '10 neue Restaurants testen', 'required') +
+      '<div class="row" style="gap:10px"><label class="field" style="flex:1">Ziel<input name="target" inputmode="decimal" value="' + esc(x ? fmtN(x.target) : '') + '" placeholder="10" required></label><label class="field" style="flex:1">Einheit<input name="unit" value="' + esc(x ? x.unit || '' : '') + '" placeholder="Restaurants"></label></div>' +
+      '<div class="row" style="gap:10px"><label class="field" style="flex:1">Schon geschafft<input name="current" inputmode="decimal" value="' + esc(x ? fmtN(x.current) : '0') + '"></label><label class="field" style="flex:1">Schritt pro Tipp<input name="step" inputmode="decimal" value="' + esc(x ? fmtN(x.step || 1) : '1') + '" placeholder="1"></label></div>' +
+      fDate('until', 'Bis wann? (optional)', x && x.until) + fText('note', 'Notiz (optional)', x && x.note, 'z. B. jeden Monat eins'),
+      (f) => { const d = { title: f.title.trim(), target: num(f.target), unit: f.unit.trim(), current: num(f.current), step: num(f.step) || 1, until: f.until || '', note: f.note.trim() }; if (!d.title || !d.target) return false; return x ? store.update('goals', x.id, d) : store.add('goals', Object.assign(d, { by: S.who, at: Date.now() })); },
+      x ? () => store.remove('goals', x.id) : null);
   },
   editRecipe(id) {
     const x = id ? S.d.recipes.find(t => t.id === id) : null;
@@ -838,7 +940,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('submit', async (e) => {
   const f = e.target.closest('[data-form]'); if (!f) return; e.preventDefault();
   const data = Object.fromEntries(new FormData(f).entries()), k = f.dataset.form;
-  if (k === 'shopAdd') { const v = (data.t || '').trim(); if (!v) return; f.querySelector('input').value = ''; await store.add('shop', { title: v, who: S.who, done: false, at: Date.now() }); f.querySelector('input').focus(); }
+  if (k === 'shopAdd') { const v = (data.t || '').trim(); if (!v) return; f.querySelector('input').value = ''; await store.add('shop', { title: v, who: S.who, done: false, at: Date.now(), cat: guessAisle(v) }); f.querySelector('input').focus(); }
   if (k === 'packAdd') { const v = (data.t || '').trim(); if (!v) return; const tr = S.d.trips.find(x => x.id === f.dataset.id); f.querySelector('input').value = ''; await store.update('trips', tr.id, { pack: (tr.pack || []).concat([{ t: v, done: false }]) }); }
   if (k === 'msg') { const v = (data.text || '').trim().slice(0, 120); const tm = L.iso(L.addDays(today(), 1)); if (v) await store.set('messages', S.who + '_' + tm, { from: S.who, forDate: tm, text: v, reaction: null }); else await store.remove('messages', S.who + '_' + tm).catch(() => {}); S.ui.msgOpen = false; render(); }
   if (k === 'diary') { await store.set('diary', tISO(), { g: data.g || '', h: data.h || '', l: data.l || '', at: Date.now() }, { priv: true }); S.ui.diaryEdit = false; render(); }

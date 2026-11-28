@@ -26,7 +26,7 @@
 <div id="fx" aria-hidden="true"></div>
 <div id="sheet"></div>
 <div id="gate"></div>
-<input type="file" id="photoInput" accept="image/*" hidden>
+<input type="file" id="photoInput" accept="image/*" multiple hidden>
 <script type="module" src="app.js"></script>
 <script>
   if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () {}); }); }
